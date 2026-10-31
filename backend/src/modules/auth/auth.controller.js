@@ -1,181 +1,148 @@
-
+import asyncHandler from "../../utils/asyncHandler.js";
+import { sendSuccess } from "../../utils/response.js";
 import * as authService from "./auth.service.js";
 
+function requestContext(req) {
+  return {
+    userAgent: req.headers["user-agent"],
+    ipAddress: req.ip,
+    deviceName: req.headers["x-device-name"] || undefined,
+  };
+}
 
-const sendSuccess = (res, statusCode, message, data) => {
-  return res.status(statusCode).json({
-    success: true,
-    message,
-    data,
-  });
-};
+export const register = asyncHandler(async (req, res) => {
+  const result = await authService.register(req.validatedBody);
 
-// POST /api/auth/register
-export const register = async (req, res, next) => {
-  try {
-    const result = await authService.register(req.validatedBody);
+  return sendSuccess(
+    res,
+    201,
+    "Registration successful. Please verify your email.",
+    result
+  );
+});
 
-    return sendSuccess(
-      res,
-      201,
-      "Registration successful. Please verify your email.",
-      result
-    );
-  } catch (error) {
-    next(error);
-  }
-};
+export const verifyOtp = asyncHandler(async (req, res) => {
+  const result = await authService.verifyOtp(req.validatedBody);
 
-// POST /api/auth/verify-otp
-export const verifyOtp = async (req, res, next) => {
-  try {
-    const result = await authService.verifyOtp(req.validatedBody);
+  return sendSuccess(
+    res,
+    200,
+    result.alreadyVerified
+      ? "This destination is already verified. Please sign in."
+      : "OTP verified successfully.",
+    result
+  );
+});
 
-    return sendSuccess(
-      res,
-      200,
-      result.alreadyVerified
-        ? "This destination is already verified. Please sign in."
-        : "OTP verified successfully.",
-      result
-    );
-  } catch (error) {
-    next(error);
-  }
-};
+export const resendOtp = asyncHandler(async (req, res) => {
+  const result = await authService.resendOtp(req.validatedBody);
 
-// POST /api/auth/resend-otp
-export const resendOtp = async (req, res, next) => {
-  try {
-    const result = await authService.resendOtp(req.validatedBody);
+  return sendSuccess(
+    res,
+    200,
+    "If the account is eligible, a verification OTP has been sent.",
+    result
+  );
+});
 
-    return sendSuccess(
-      res,
-      200,
-      "If the account is eligible, a verification OTP has been sent.",
-      result
-    );
-  } catch (error) {
-    next(error);
-  }
-};
+export const login = asyncHandler(async (req, res) => {
+  const result = await authService.login(req.validatedBody, requestContext(req));
 
-// POST /api/auth/login-password
-export const login = async (req, res, next) => {
-  try {
-    const result = await authService.login(req.validatedBody);
+  return sendSuccess(res, 200, "Login successful.", result);
+});
 
-    return sendSuccess(
-      res,
-      200,
-      "Login successful.",
-      result
-    );
-  } catch (error) {
-    next(error);
-  }
-};
+export const requestLoginOtp = asyncHandler(async (req, res) => {
+  const result = await authService.requestLoginOtp(req.validatedBody);
 
-// POST /api/auth/login-otp
-export const requestLoginOtp = async (req, res, next) => {
-  try {
-    const result = await authService.requestLoginOtp(
-      req.validatedBody
-    );
+  return sendSuccess(
+    res,
+    200,
+    "If the account is eligible, a login OTP has been sent.",
+    result
+  );
+});
 
-    return sendSuccess(
-      res,
-      200,
-      "If the account is eligible, a login OTP has been sent.",
-      result
-    );
-  } catch (error) {
-    next(error);
-  }
-};
+export const verifyLoginOtp = asyncHandler(async (req, res) => {
+  const result = await authService.verifyLoginOtp(
+    req.validatedBody,
+    requestContext(req)
+  );
 
-// POST /api/auth/verify-login-otp
-export const verifyLoginOtp = async (req, res, next) => {
-  try {
-    const result = await authService.verifyLoginOtp(
-      req.validatedBody
-    );
+  return sendSuccess(res, 200, "Login successful.", result);
+});
 
-    return sendSuccess(
-      res,
-      200,
-      "Login successful.",
-      result
-    );
-  } catch (error) {
-    next(error);
-  }
-};
+export const refreshToken = asyncHandler(async (req, res) => {
+  const result = await authService.refreshToken(req.validatedBody.refreshToken);
 
-// POST /api/auth/refresh-token
+  return sendSuccess(res, 200, "Token refreshed successfully.", result);
+});
 
-export const refreshToken = async (req, res, next) => {
-  try {
-    const result = await authService.refreshToken(
-      req.validatedBody.refreshToken
-    );
+export const logout = asyncHandler(async (req, res) => {
+  const result = await authService.logout(req.validatedBody.refreshToken);
 
-    return sendSuccess(res, 200, "Token refreshed successfully.", result);
-  } catch (error) {
-    next(error);
-  }
-};
+  return sendSuccess(res, 200, "Logout successful.", result);
+});
 
-// POST /api/auth/logout
-export const logout = async (req, res, next) => {
-  try {
-    const result = await authService.logout(
-      req.validatedBody.refreshToken
-    );
+export const logoutAll = asyncHandler(async (req, res) => {
+  const result = await authService.logoutAll(req.user.id);
 
-    return sendSuccess(
-      res,
-      200,
-      "Logout successful.",
-      result
-    );
-  } catch (error) {
-    next(error);
-  }
-};
+  return sendSuccess(res, 200, "Signed out from all devices.", result);
+});
 
-// POST /api/auth/forgot-password
-export const forgotPassword = async (req, res, next) => {
-  try {
-    const result = await authService.forgotPassword(
-      req.validatedBody.email
-    );
+export const forgotPassword = asyncHandler(async (req, res) => {
+  const result = await authService.forgotPassword(req.validatedBody.email);
 
-    return sendSuccess(
-      res,
-      200,
-      "If an eligible account exists, password-reset instructions will be sent.",
-      result
-    );
-  } catch (error) {
-    next(error);
-  }
-};
+  return sendSuccess(
+    res,
+    200,
+    "If an eligible account exists, password-reset instructions will be sent.",
+    result
+  );
+});
 
-// POST /api/auth/reset-password
-export const resetPassword = async (req, res, next) => {
-  try {
-    const result = await authService.resetPassword(
-      req.validatedBody
-    );
+export const resetPassword = asyncHandler(async (req, res) => {
+  const result = await authService.resetPassword(req.validatedBody);
 
-    return sendSuccess(
-      res,
-      200,
-      "Password reset successful. Please log in again.",
-      result
-    );
-  } catch (error) {
-    next(error);
-  }
-};
+  return sendSuccess(
+    res,
+    200,
+    "Password reset successful. Please log in again.",
+    result
+  );
+});
+
+export const me = asyncHandler(async (req, res) => {
+  const user = await authService.getProfile(req.user.id);
+
+  return sendSuccess(res, 200, "Profile fetched successfully.", user);
+});
+
+export const updateMe = asyncHandler(async (req, res) => {
+  const user = await authService.updateProfile(req.user.id, req.validatedBody);
+
+  return sendSuccess(res, 200, "Profile updated successfully.", user);
+});
+
+export const changePassword = asyncHandler(async (req, res) => {
+  const result = await authService.changePassword(
+    req.user.id,
+    req.validatedBody
+  );
+
+  return sendSuccess(res, 200, "Password changed successfully.", result);
+});
+
+export const listSessions = asyncHandler(async (req, res) => {
+  const sessions = await authService.listSessions(req.user.id);
+
+  return sendSuccess(res, 200, "Sessions fetched successfully.", sessions);
+});
+
+export const revokeSession = asyncHandler(async (req, res) => {
+  const result = await authService.revokeSession(
+    req.user.id,
+    req.validatedParams.sessionId
+  );
+
+  return sendSuccess(res, 200, "Session revoked successfully.", result);
+});

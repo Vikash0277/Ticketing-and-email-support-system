@@ -1,107 +1,104 @@
-// src/modules/tickets/ticket.controller.js
-
+import asyncHandler from "../../utils/asyncHandler.js";
+import { sendSuccess, sendPaginated } from "../../utils/response.js";
 import * as ticketService from "./ticket.service.js";
+import { uploadFiles } from "../../services/storage.service.js";
 
-export async function createTicket(req, res, next) {
-  try {
-    const ticket = await ticketService.createTicket(
-      req.validatedBody,
-      req.user
-    );
+export const createTicket = asyncHandler(async (req, res) => {
+  const attachments = req.files?.length
+    ? await uploadFiles(req.files)
+    : [];
 
-    return res.status(201).json({
-      success: true,
-      message: "Ticket created successfully",
-      data: ticket,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
+  const ticket = await ticketService.createTicket(
+    req.validatedBody,
+    req.user,
+    attachments
+  );
 
-export async function listTickets(req, res, next) {
-  try {
-    const result = await ticketService.listTickets(
-      req.validatedQuery,
-      req.user
-    );
+  return sendSuccess(res, 201, "Ticket created successfully", ticket);
+});
 
-    return res.status(200).json({
-      success: true,
-      data: result.tickets,
-      pagination: result.pagination,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
+export const listTickets = asyncHandler(async (req, res) => {
+  const result = await ticketService.listTickets(req.validatedQuery, req.user);
 
-export async function getTicket(req, res, next) {
-  try {
-    const ticket = await ticketService.getTicket(
-      req.validatedParams.id,
-      req.user
-    );
+  return sendPaginated(
+    res,
+    "Tickets fetched successfully",
+    result.tickets,
+    result.pagination
+  );
+});
 
-    return res.status(200).json({
-      success: true,
-      data: ticket,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
+export const getTicket = asyncHandler(async (req, res) => {
+  const ticket = await ticketService.getTicket(
+    req.validatedParams.id,
+    req.user
+  );
 
-export async function updateTicket(req, res, next) {
-  try {
-    const ticket = await ticketService.updateTicket(
-      req.validatedParams.id,
-      req.validatedBody,
-      req.user
-    );
+  return sendSuccess(res, 200, "Ticket fetched successfully", ticket);
+});
 
-    return res.status(200).json({
-      success: true,
-      message: "Ticket updated successfully",
-      data: ticket,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
+export const updateTicket = asyncHandler(async (req, res) => {
+  const ticket = await ticketService.updateTicket(
+    req.validatedParams.id,
+    req.validatedBody,
+    req.user
+  );
 
-export async function updateTicketStatus(req, res, next) {
-  try {
-    const ticket = await ticketService.updateTicketStatus(
-      req.validatedParams.id,
-      req.validatedBody,
-      req.user
-    );
+  return sendSuccess(res, 200, "Ticket updated successfully", ticket);
+});
 
-    return res.status(200).json({
-      success: true,
-      message: "Ticket status updated successfully",
-      data: ticket,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
+export const updateTicketStatus = asyncHandler(async (req, res) => {
+  const ticket = await ticketService.updateTicketStatus(
+    req.validatedParams.id,
+    req.validatedBody,
+    req.user
+  );
 
-export async function assignTicket(req, res, next) {
-  try {
-    const ticket = await ticketService.assignTicket(
-      req.validatedParams.id,
-      req.validatedBody,
-      req.user
-    );
+  return sendSuccess(res, 200, "Ticket status updated successfully", ticket);
+});
 
-    return res.status(200).json({
-      success: true,
-      message: "Ticket assigned successfully",
-      data: ticket,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
+export const resolveTicket = asyncHandler(async (req, res) => {
+  const ticket = await ticketService.resolveTicket(
+    req.validatedParams.id,
+    req.validatedBody,
+    req.user
+  );
+
+  return sendSuccess(res, 200, "Ticket resolved successfully", ticket);
+});
+
+export const reopenTicket = asyncHandler(async (req, res) => {
+  const ticket = await ticketService.reopenTicket(
+    req.validatedParams.id,
+    req.validatedBody,
+    req.user
+  );
+
+  return sendSuccess(res, 200, "Ticket reopened successfully", ticket);
+});
+
+export const closeTicket = asyncHandler(async (req, res) => {
+  const ticket = await ticketService.closeTicket(
+    req.validatedParams.id,
+    req.validatedBody,
+    req.user
+  );
+
+  return sendSuccess(res, 200, "Ticket closed successfully", ticket);
+});
+
+export const assignTicket = asyncHandler(async (req, res) => {
+  const ticket = await ticketService.assignTicket(
+    req.validatedParams.id,
+    req.validatedBody,
+    req.user
+  );
+
+  return sendSuccess(res, 200, "Ticket assigned successfully", ticket);
+});
+
+export const getTicketStats = asyncHandler(async (req, res) => {
+  const stats = await ticketService.getTicketStats(req.user);
+
+  return sendSuccess(res, 200, "Ticket statistics fetched successfully", stats);
+});

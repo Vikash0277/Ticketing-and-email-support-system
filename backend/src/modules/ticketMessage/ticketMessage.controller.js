@@ -1,68 +1,85 @@
+import fs from "node:fs";
+
+import asyncHandler from "../../utils/asyncHandler.js";
+import ApiError from "../../utils/ApiError.js";
+import { sendSuccess, sendPaginated } from "../../utils/response.js";
+import {
+  resolveLocalPath,
+  uploadFiles,
+} from "../../services/storage.service.js";
 import * as ticketMessageService from "./ticketMessage.service.js";
 
-import {
-  ticketMessageParamsSchema,
-  messageIdParamsSchema,
-  listTicketMessagesSchema,
-} from "./ticketMessage.validation.js";
+export const createTicketMessage = asyncHandler(async (req, res) => {
+  const { ticketId } = req.validatedParams;
 
-export async function createTicketMessage(req, res, next) {
-  try {
-    const { ticketId } = ticketMessageParamsSchema.parse(req.params);
+  const attachments = req.files?.length
+    ? await uploadFiles(req.files)
+    : [];
 
-    const message = await ticketMessageService.createTicketMessage(
-      ticketId,
-      req.validatedBody,
-      req.user
-    );
+  const message = await ticketMessageService.createTicketMessage(
+    ticketId,
+    req.validatedBody,
+    req.user,
+    attachments
+  );
 
-    return res.status(201).json({
-      success: true,
-      message: "Message added successfully",
-      data: message,
-    });
-  } catch (error) {
-    next(error);
+  return sendSuccess(res, 201, "Message added successfully", message);
+});
+
+export const listTicketMessages = asyncHandler(async (req, res) => {
+  const { ticketId } = req.validatedParams;
+
+  const result = await ticketMessageService.listTicketMessages(
+    ticketId,
+    req.validatedQuery,
+    req.user
+  );
+
+  return sendPaginated(
+    res,
+    "Messages fetched successfully",
+    result.messages,
+    result.pagination
+  );
+});
+
+export const getTicketMessage = asyncHandler(async (req, res) => {
+  const { ticketId, messageId } = req.validatedParams;
+
+  const message = await ticketMessageService.getTicketMessage(
+    ticketId,
+    messageId,
+    req.user
+  );
+
+  return sendSuccess(res, 200, "Message fetched successfully", message);
+});
+
+export const downloadMessageAttachment = asyncHandler(async (req, res) => {
+  const { ticketId, messageId, attachmentId } = req.validatedParams;
+
+  const { attachment } = await ticketMessageService.getMessageAttachment(
+    ticketId,
+    messageId,
+    attachmentId,
+    req.user
+  );
+
+  if (attachment.provider === "cloudinary" && attachment.url) {
+    return res.redirect(attachment.url);
   }
-}
 
-export async function listTicketMessages(req, res, next) {
-  try {
-    const { ticketId } = ticketMessageParamsSchema.parse(req.params);
-    const query = listTicketMessagesSchema.parse(req.query);
+  if (attachment.provider !== "local") {
+    if (attachment.url) return res.redirect(attachment.url);
 
-    const result = await ticketMessageService.listTicketMessages(
-      ticketId,
-      query,
-      req.user
-    );
-
-    return res.status(200).json({
-      success: true,
-      data: result.messages,
-      pagination: result.pagination,
-    });
-  } catch (error) {
-    next(error);
+    throw ApiError.notFound("Attachment file is not available");
   }
-}
 
-export async function getTicketMessage(req, res, next) {
-  try {
-    const { ticketId, messageId } =
-      messageIdParamsSchema.parse(req.params);
+  const filePath = resolveLocalPath(attachment.storageKey);
 
-    const message = await ticketMessageService.getTicketMessage(
-      ticketId,
-      messageId,
-      req.user
-    );
-
-    return res.status(200).json({
-      success: true,
-      data: message,
-    });
-  } catch (error) {
-    next(error);
+  if (!fs.existsSync(filePath)) {
+    throw ApiError.notFound("Attachment file is no longer available");
   }
-}
+
+  return res.download(filePath, attachment.filename);
+});

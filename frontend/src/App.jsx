@@ -1,24 +1,26 @@
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 
-import { Navigate, Route, Routes } from "react-router-dom";
-import { useSelector } from "react-redux";
+import AppLayout from "./components/layout/AppLayout";
+import ProtectedRoute from "./components/layout/ProtectedRoute";
 
-import ForgotPassword from "./pages/auth/forgetPassword";
+import DashboardPage from "./pages/DashboardPage";
+import TicketListPage from "./pages/TicketListPage";
+import TicketCreatePage from "./pages/TicketCreatePage";
+import TicketDetailPage from "./pages/TicketDetailPage";
+import ProfilePage from "./pages/ProfilePage";
+import NotificationsPage from "./pages/NotificationsPage";
+import UserManagementPage from "./pages/UserManagementPage";
+import CategoryManagementPage from "./pages/CategoryManagementPage";
+
 import Login from "./pages/auth/login";
 import Register from "./pages/auth/register";
+import ForgotPassword from "./pages/auth/forgetPassword";
 import ResetPassword from "./pages/auth/resetPassword";
 import VerifyOtp from "./pages/auth/verifyOtp";
 
-import AdminDashboard from "./pages/admin/AdminDashboard";
-import AgentDashboard from "./pages/agent/AgentDashboard";
-import CustomerDashboard from "./pages/customer/CustomerDashboard";
-
-import CustomerLayout from "./components/customer/CustomerLayout";
-import MyTickets from "./pages/customer/MyTickets";
-import CreateTicket from "./pages/customer/CreateTicket";
-import TicketDetails from "./pages/customer/TicketDetails";
-import CustomerProfile from "./pages/customer/CustomerProfile";
-
-import ProtectedRoute from "./components/layout/ProtectedRoute";
+import { clearAuth, setSession } from "./redux/auth/authSlice";
 
 const dashboardByRole = {
   customer: "/customer/dashboard",
@@ -26,61 +28,110 @@ const dashboardByRole = {
   admin: "/admin/dashboard",
 };
 
-function HomeRedirect() {
-  const { user } = useSelector((state) => state.auth);
+function RoleRedirect() {
+  const user = useSelector((state) => state.auth.user);
+  const location = useLocation();
 
+  if (!user?.role) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: location, message: location.state?.message }}
+      />
+    );
+  }
+
+  return <Navigate to={dashboardByRole[user.role] || "/login"} replace />;
+}
+
+function CustomerRoutes() {
   return (
-    <Navigate
-      to={dashboardByRole[user?.role] || "/login"}
-      replace
-    />
+    <Route path="/customer" element={<AppLayout />}>
+      <Route index element={<Navigate to="dashboard" replace />} />
+      <Route path="dashboard" element={<DashboardPage />} />
+      <Route path="tickets" element={<TicketListPage />} />
+      <Route path="tickets/new" element={<TicketCreatePage />} />
+      <Route path="tickets/:ticketId" element={<TicketDetailPage />} />
+      <Route path="notifications" element={<NotificationsPage />} />
+      <Route path="profile" element={<ProfilePage />} />
+    </Route>
+  );
+}
+
+function AgentRoutes() {
+  return (
+    <Route path="/agent" element={<AppLayout />}>
+      <Route index element={<Navigate to="dashboard" replace />} />
+      <Route path="dashboard" element={<DashboardPage />} />
+      <Route path="tickets" element={<TicketListPage />} />
+      <Route path="tickets/new" element={<TicketCreatePage />} />
+      <Route path="tickets/:ticketId" element={<TicketDetailPage />} />
+      <Route path="notifications" element={<NotificationsPage />} />
+      <Route path="profile" element={<ProfilePage />} />
+    </Route>
+  );
+}
+
+function AdminRoutes() {
+  return (
+    <Route path="/admin" element={<AppLayout />}>
+      <Route index element={<Navigate to="dashboard" replace />} />
+      <Route path="dashboard" element={<DashboardPage />} />
+      <Route path="tickets" element={<TicketListPage />} />
+      <Route path="tickets/new" element={<TicketCreatePage />} />
+      <Route path="tickets/:ticketId" element={<TicketDetailPage />} />
+      <Route path="users" element={<UserManagementPage />} />
+      <Route path="categories" element={<CategoryManagementPage />} />
+      <Route path="notifications" element={<NotificationsPage />} />
+      <Route path="profile" element={<ProfilePage />} />
+    </Route>
   );
 }
 
 export default function App() {
+  const dispatch = useDispatch();
+
+  useEffect(() => {
+    const handleRefreshed = (event) => {
+      if (event.detail) dispatch(setSession(event.detail));
+    };
+
+    const handleExpired = () => dispatch(clearAuth());
+
+    window.addEventListener("auth:refreshed", handleRefreshed);
+    window.addEventListener("auth:expired", handleExpired);
+
+    return () => {
+      window.removeEventListener("auth:refreshed", handleRefreshed);
+      window.removeEventListener("auth:expired", handleExpired);
+    };
+  }, [dispatch]);
+
   return (
     <Routes>
-      {/* Default redirect */}
-      <Route path="/" element={<HomeRedirect />} />
-      <Route path="/dashboard" element={<HomeRedirect />} />
+      <Route path="/" element={<RoleRedirect />} />
+      <Route path="/dashboard" element={<RoleRedirect />} />
 
-      {/* Authentication pages */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/verify-otp" element={<VerifyOtp />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
 
-      {/* Customer pages */}
       <Route element={<ProtectedRoute allowedRoles={["customer"]} />}>
-        <Route path="/customer" element={<CustomerLayout />}>
-          <Route path="dashboard" element={<CustomerDashboard />} />
-          <Route path="tickets" element={<MyTickets />} />
-          <Route path="tickets/new" element={<CreateTicket />} />
-          <Route path="tickets/:ticketId" element={<TicketDetails />} />
-          <Route path="profile" element={<CustomerProfile />} />
-        </Route>
+        {CustomerRoutes()}
       </Route>
 
-      {/* Agent dashboard */}
       <Route element={<ProtectedRoute allowedRoles={["agent"]} />}>
-        <Route
-          path="/agent/dashboard"
-          element={<AgentDashboard />}
-        />
+        {AgentRoutes()}
       </Route>
 
-      {/* Admin dashboard */}
       <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
-        <Route
-          path="/admin/dashboard"
-          element={<AdminDashboard />}
-        />
+        {AdminRoutes()}
       </Route>
 
-      {/* Unknown routes */}
-      <Route path="*" element={<HomeRedirect />} />
+      <Route path="*" element={<RoleRedirect />} />
     </Routes>
   );
 }
-

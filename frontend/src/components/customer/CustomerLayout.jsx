@@ -4,7 +4,6 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { clearAuth } from "../../redux/auth/authSlice";
 import {
-  LayoutDashboard,
   Ticket,
   PlusCircle,
   UserRound,

@@ -9,7 +9,6 @@ import {
   LoaderCircle,
   LockKeyhole,
   Mail,
-  Phone,
   ShieldCheck,
 } from "lucide-react";
 
@@ -23,8 +22,13 @@ import {
 const modes = [
   { id: "password", label: "Email & Password" },
   { id: "email", label: "Email OTP" },
-  { id: "phone", label: "Phone OTP" },
 ];
+
+const dashboardByRole = {
+  customer: "/customer/dashboard",
+  agent: "/agent/dashboard",
+  admin: "/admin/dashboard",
+};
 
 export default function Login() {
   const dispatch = useDispatch();
@@ -32,31 +36,29 @@ export default function Login() {
   const location = useLocation();
 
   const {
+    user,
     isLoginLoading,
-    isLoginSuccess,
     isOtpLoginLoading,
     isOtpLoginSent,
-    isOtpLoginSuccess,
     isError,
     message,
   } = useSelector((state) => state.auth);
 
   const [mode, setMode] = useState("password");
-  const [identifier, setIdentifier] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
 
   const isLoading = isLoginLoading || isOtpLoginLoading;
-  const otpMode = mode !== "password";
+  const otpMode = mode === "email";
 
   useEffect(() => {
-    if (isLoginSuccess || isOtpLoginSuccess) {
-      navigate("/dashboard", { replace: true });
-      dispatch(resetAuthState());
+    if (user?.role) {
+      navigate(dashboardByRole[user.role] || "/", { replace: true });
     }
-  }, [isLoginSuccess, isOtpLoginSuccess, navigate, dispatch]);
+  }, [user, navigate]);
 
   useEffect(() => {
     return () => dispatch(resetAuthState());
@@ -64,46 +66,21 @@ export default function Login() {
 
   const changeMode = (nextMode) => {
     setMode(nextMode);
-    setIdentifier("");
+    setEmail("");
     setPassword("");
     setOtp("");
     setErrors({});
     dispatch(resetAuthState());
   };
 
-
-  const redirectByRole = (role) => {
-    const dashboardByRole = {
-      customer: "/customer/dashboard",
-      agent: "/agent/dashboard",
-      admin: "/admin/dashboard",
-    };
-
-    const path = dashboardByRole[role];
-
-    if (path) {
-      navigate(path, { replace: true });
-    } else {
-      setErrors((previous) => ({
-        ...previous,
-        submit: "Unable to determine your account role.",
-      }));
-    }
-  };
-  
-
   const handleSubmit = async (event) => {
     event.preventDefault();
 
     const nextErrors = {};
-    const value = identifier.trim();
+    const normalizedEmail = email.trim().toLowerCase();
 
-    if (mode === "phone") {
-      if (!/^\+?[1-9]\d{7,14}$/.test(value.replace(/[\s()-]/g, ""))) {
-        nextErrors.identifier = "Enter a valid phone number with country code.";
-      }
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-      nextErrors.identifier = "Enter a valid email address.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      nextErrors.email = "Enter a valid email address.";
     }
 
     if (mode === "password" && !password) {
@@ -117,48 +94,19 @@ export default function Login() {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
 
-    const normalizedIdentifier =
-      mode === "phone" ? value.replace(/[\s()-]/g, "") : value.toLowerCase();
-
     try {
       if (mode === "password") {
-        const result = await dispatch(
-          loginUser({
-            email: normalizedIdentifier,
-            password,
-          }),
-        ).unwrap();
-
-        const authData = result?.data ?? result;
-        const user = authData?.user;
-
-        redirectByRole(user?.role);
-      } else if (!isOtpLoginSent) {
         await dispatch(
-          requestLoginOtp({
-            channel: mode,
-            identifier: normalizedIdentifier,
-          }),
+          loginUser({ email: normalizedEmail, password })
         ).unwrap();
-
-        setIsOtpLoginSent(true);
+      } else if (!isOtpLoginSent) {
+        await dispatch(requestLoginOtp({ email: normalizedEmail })).unwrap();
       } else {
-        const result = await dispatch(
-          verifyLoginOtp({
-            channel: mode,
-            identifier: normalizedIdentifier,
-            otp,
-          }),
+        await dispatch(
+          verifyLoginOtp({ email: normalizedEmail, otp })
         ).unwrap();
-
-        const authData = result?.data ?? result;
-        const user = authData?.user;
-
-        redirectByRole(user?.role);
       }
     } catch (error) {
-      console.error("Login failed:", error);
-
       setErrors((previous) => ({
         ...previous,
         submit:
@@ -172,8 +120,6 @@ export default function Login() {
   const inputClass =
     "w-full rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-left text-sm text-slate-900 outline-none transition placeholder:text-left placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10";
 
-  const identifierLabel = mode === "phone" ? "Phone number" : "Email address";
-
   return (
     <main className="min-h-screen bg-slate-50 lg:grid lg:grid-cols-2">
       {/* Branding */}
@@ -185,7 +131,7 @@ export default function Login() {
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-indigo-700">
             <Headset size={25} />
           </span>
-          <span className="text-xl font-bold tracking-tight">SupportDesk</span>
+          <span className="text-xl font-bold tracking-tight">BitMax</span>
         </Link>
 
         <div className="relative max-w-lg">
@@ -206,7 +152,7 @@ export default function Login() {
             {[
               "Track all your support tickets",
               "Get updates on ticket progress",
-              "Choose a convenient sign-in method",
+              "Reply by email or from the portal",
             ].map((item) => (
               <div key={item} className="flex items-center gap-3">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-sm">
@@ -219,7 +165,7 @@ export default function Login() {
         </div>
 
         <p className="relative text-xs text-indigo-200">
-          © {new Date().getFullYear()} SupportDesk. All rights reserved.
+          © {new Date().getFullYear()} BitMax. All rights reserved.
         </p>
       </section>
 
@@ -231,7 +177,7 @@ export default function Login() {
             className="mb-8 flex items-center justify-center gap-2 text-lg font-bold text-indigo-700 lg:hidden"
           >
             <Headset size={25} />
-            SupportDesk
+            BitMax
           </Link>
 
           <div className="mb-7">
@@ -262,7 +208,7 @@ export default function Login() {
           )}
 
           {/* Login method tabs */}
-          <div className="mb-6 grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+          <div className="mb-6 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
             {modes.map((item) => (
               <button
                 key={item.id}
@@ -282,45 +228,34 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
             <div>
               <label
-                htmlFor="identifier"
+                htmlFor="email"
                 className="mb-2 block text-left text-sm font-medium text-slate-700"
               >
-                {identifierLabel}
+                Email address
               </label>
 
               <div className="relative">
-                {mode === "phone" ? (
-                  <Phone
-                    size={18}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                ) : (
-                  <Mail
-                    size={18}
-                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                  />
-                )}
+                <Mail
+                  size={18}
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
+                />
 
                 <input
-                  id="identifier"
-                  type={mode === "phone" ? "tel" : "email"}
-                  value={identifier}
+                  id="email"
+                  type="email"
+                  value={email}
                   onChange={(event) => {
-                    setIdentifier(event.target.value);
+                    setEmail(event.target.value);
                     setErrors({});
                   }}
-                  placeholder={
-                    mode === "phone" ? "+91 9876543210" : "you@example.com"
-                  }
-                  autoComplete={mode === "phone" ? "tel" : "email"}
+                  placeholder="you@example.com"
+                  autoComplete="email"
                   className={inputClass}
                 />
               </div>
 
-              {errors.identifier && (
-                <p className="mt-1.5 text-xs text-red-600">
-                  {errors.identifier}
-                </p>
+              {errors.email && (
+                <p className="mt-1.5 text-xs text-red-600">{errors.email}</p>
               )}
             </div>
 
@@ -400,8 +335,8 @@ export default function Login() {
                   <p className="mt-1.5 text-xs text-red-600">{errors.otp}</p>
                 )}
                 <p className="mt-2 text-xs text-slate-500">
-                  Enter the code sent to your{" "}
-                  {mode === "email" ? "email" : "phone"}.
+                  Enter the code sent to your email. In development the OTP is
+                  also printed in the API console.
                 </p>
               </div>
             )}
@@ -439,14 +374,14 @@ export default function Login() {
                 }}
                 className="w-full text-sm font-medium text-indigo-600 hover:text-indigo-700 disabled:opacity-50"
               >
-                Change email or phone number
+                Change email address
               </button>
             )}
           </form>
 
           <div className="my-7 flex items-center gap-4">
             <div className="h-px flex-1 bg-slate-200" />
-            <span className="text-xs text-slate-400">NEW TO SUPPORTDESK?</span>
+            <span className="text-xs text-slate-400">NEW TO BITMAX?</span>
             <div className="h-px flex-1 bg-slate-200" />
           </div>
 

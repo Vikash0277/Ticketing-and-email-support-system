@@ -68,6 +68,7 @@ export async function listTicketActivities(ticketId, query, user) {
 
   const [activities, total] = await Promise.all([
     TicketActivity.find(filter)
+      .populate("actorId", "name email role")
       .sort({ createdAt: direction, _id: direction })
       .skip(skip)
       .limit(limit)
@@ -106,7 +107,9 @@ export async function getTicketActivity(
     ...buildActivityFilter(ticket._id, user),
   };
 
-  const activity = await TicketActivity.findOne(filter).lean();
+  const activity = await TicketActivity.findOne(filter)
+    .populate("actorId", "name email role")
+    .lean();
 
   if (!activity) {
     throw createError("Activity not found", 404);

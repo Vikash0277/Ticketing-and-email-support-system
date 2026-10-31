@@ -1,88 +1,86 @@
-import { Worker } from "bullmq";
+import "dotenv/config";
 
-import { redisConnection } from "../jobs/email.queue.js";
-import EmailEvent from "../modules/email/emailEvent.model.js";
-import { sendProviderEmail } from "../modules/email/email.provider.js";
+import { Worker } from "bullmq";
+import mongoose from "mongoose";
+
+import logger from "../config/logger.js";
+import dbConnection from "../database/mongoDB.js";
+import {
+  EMAIL_QUEUE_NAME,
+  closeQueue,
+  getRedisConnection,
+} from "../queues/email.queue.js";
+import { sendEmailEvent } from "../queues/email.sender.js";
 import { processInboundResendEmail } from "../modules/email/email.inbound.service.js";
 
-const worker = new Worker(
-  "ticket-email",
-  async (job) => {
-    if (job.name === "process-inbound-email") {
-      return processInboundResendEmail(job.data);
-    }
+let worker = null;
 
-    if (job.name === "send-email") {
-      const {
-        eventId,
-        recipient,
-        subject,
-        html,
-        text,
-        replyTo,
-        ticketId,
-        kind,
-      } = job.data;
-
-      const event = await EmailEvent.findById(eventId);
-
-      if (!event) {
-        throw new Error(`EmailEvent not found: ${eventId}`);
-      }
-
-      event.status = "processing";
-      event.attempts += 1;
-      await event.save();
-
-      try {
-        const result = await sendProviderEmail({
-          to: recipient,
-          subject,
-          html,
-          text,
-          replyTo,
-          headers: {
-            "X-Ticket-ID": ticketId,
-            "X-Ticket-Email-Type": kind,
-          },
-        });
-
-        event.status = "sent";
-        event.providerMessageId = result.providerMessageId;
-        event.processedAt = new Date();
-        await event.save();
-
-        return {
-          sent: true,
-          eventId,
-          providerMessageId: result.providerMessageId,
-        };
-      } catch (error) {
-        event.status = "failed";
-        event.error = error.message;
-        await event.save();
-        throw error;
-      }
-    }
-
-    throw new Error(`Unknown email job: ${job.name}`);
-  },
-  {
-    connection: redisConnection,
-    concurrency: 5,
+async function processJob(job) {
+  if (job.name === "process-inbound-email") {
+    return processInboundResendEmail(job.data);
   }
-);
 
-worker.on("completed", (job) => {
-  console.info(`Email job completed: ${job.id}`);
+  if (job.name === "send-email") {
+    return sendEmailEvent(job.data);
+  }
+
+  throw new Error(`Unknown email job: ${job.name}`);
+}
+
+async function start() {
+  await dbConnection();
+
+  const connection = getRedisConnection();
+
+  if (!connection) {
+    logger.error("REDIS_URL is not configured; email worker cannot start");
+    process.exit(1);
+  }
+
+  worker = new Worker(EMAIL_QUEUE_NAME, processJob, {
+    connection,
+    concurrency: 5,
+  });
+
+  worker.on("completed", (job) => {
+    logger.info("Email job completed", { jobId: job.id, name: job.name });
+  });
+
+  worker.on("failed", (job, error) => {
+    logger.error("Email job failed", {
+      jobId: job?.id,
+      name: job?.name,
+      message: error.message,
+    });
+  });
+
+  worker.on("error", (error) => {
+    logger.error("Email worker error", { message: error.message });
+  });
+
+  logger.info("Ticket email worker started");
+}
+
+async function shutdown(signal) {
+  logger.info(`Email worker received ${signal}. Shutting down.`);
+
+  if (worker) {
+    await worker.close();
+  }
+
+  await closeQueue();
+  await mongoose.connection.close();
+
+  process.exit(0);
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+start().catch((error) => {
+  logger.error("Email worker failed to start", {
+    message: error.message,
+    stack: error.stack,
+  });
+  process.exit(1);
 });
-
-worker.on("failed", (job, error) => {
-  console.error(`Email job failed: ${job?.id}`, error.message);
-});
-
-worker.on("error", (error) => {
-  console.error("Email worker error:", error.message);
-});
-
-console.info("Ticket email worker started");

@@ -1,55 +1,27 @@
-import axios from "axios";
+import client from "../../api/client";
 
-const API_URL = `${import.meta.env.VITE_API_URL}/auth`;
+const API_URL = "/auth";
 
-const register = async (userData) => {
-  const response = await axios.post(`${API_URL}/register`, userData);
+async function request(path, payload) {
+  const response = await client.post(`${API_URL}${path}`, payload);
   return response.data;
-};
+}
 
-const verifyOtp = async (data) => {
-  const response = await axios.post(`${API_URL}/verify-otp`, data);
-  return response.data;
-};
+const register = (userData) => request("/register", userData);
 
-const resendOtp = async (data) => {
-  const response = await axios.post(`${API_URL}/resend-otp`, data);
-  return response.data;
-};
+const verifyOtp = (data) => request("/verify-otp", data);
 
-const login = async (credentials) => {
-  const response = await axios.post(`${API_URL}/login-password`, credentials);
-  return response.data;
-};
+const resendOtp = (data) => request("/resend-otp", data);
 
-const forgotPassword = async (data) => {
-  const response = await axios.post(`${API_URL}/forgot-password`, data);
-  return response.data;
-};
+const login = (credentials) => request("/login-password", credentials);
 
-const requestLoginOtp = async (data) => {
-  const response = await axios.post(
-    `${API_URL}/login-otp`,
-    data
-  );
-  return response.data;
-};
+const requestLoginOtp = (data) => request("/login-otp", data);
 
-const verifyLoginOtp = async (data) => {
-  const response = await axios.post(
-    `${API_URL}/verify-login-otp`,
-    data
-  );
-  return response.data;
-};
+const verifyLoginOtp = (data) => request("/verify-login-otp", data);
 
-const resetPassword = async (data) => {
-  const response = await axios.post(
-    `${API_URL}/reset-password`,
-    data
-  );
-  return response.data;
-};
+const forgotPassword = (data) => request("/forgot-password", data);
+
+const resetPassword = (data) => request("/reset-password", data);
 
 const authService = {
   register,
@@ -59,7 +31,7 @@ const authService = {
   forgotPassword,
   requestLoginOtp,
   verifyLoginOtp,
-  resetPassword
+  resetPassword,
 };
 
 export default authService;

@@ -1,36 +1,55 @@
 {
   "name": "backend",
-  "version": "1.0.0",
-  "description": "",
+  "version": "2.0.0",
+  "description": "BitMax MERN ticketing system API with JWT/OTP auth, RBAC, ticket lifecycle and two-way email threading",
   "main": "server.js",
+  "type": "module",
   "scripts": {
-    "dev": "nodemon server.js",
+    "dev": "concurrently -n api,worker -c blue,magenta \"nodemon server.js\" \"nodemon src/workers/email.worker.js\"",
+    "dev:api": "nodemon server.js",
+    "dev:worker": "nodemon src/workers/email.worker.js",
     "start": "node server.js",
-    "worker:email": "node src/workers/email.worker.js"
+    "start:worker": "node src/workers/email.worker.js",
+    "seed": "node src/scripts/seed.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
-  "keywords": [],
+  "keywords": [
+    "ticketing",
+    "mern",
+    "support",
+    "resend"
+  ],
   "author": "",
   "license": "ISC",
-  "type": "module",
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "bullmq": "^6.5.1",
+    "cloudinary": "^2.11.0",
     "cors": "^2.8.6",
     "dotenv": "^18.0.9",
     "express": "^5.3.0",
+    "express-rate-limit": "^8.7.2",
+    "helmet": "^8.3.0",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.11.4",
     "morgan": "^1.12.1",
+    "multer": "^2.5.0",
     "nodemon": "^3.1.14",
     "resend": "^6.35.0",
     "sanitize-html": "^2.18.1",
+    "svix": "^2.9.1",
     "swagger-jsdoc": "^6.3.0",
     "swagger-ui-express": "^5.0.1",
     "winston": "^3.19.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/sanitize-html": "^2.16.2"
+    "@types/sanitize-html": "^2.16.2",
+    "concurrently": "^10.0.6",
+    "mongodb-memory-server": "^11.3.0",
+    "supertest": "^7.3.1",
+    "vitest": "^5.0.5"
   }
 }

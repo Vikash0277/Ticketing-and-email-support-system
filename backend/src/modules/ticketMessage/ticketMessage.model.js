@@ -6,8 +6,14 @@ const attachmentSchema = new mongoose.Schema(
     contentType: { type: String, required: true },
     size: { type: Number, required: true },
     storageKey: { type: String, required: true },
+    url: { type: String, default: null },
+    provider: {
+      type: String,
+      enum: ["cloudinary", "local", "resend"],
+      default: "local",
+    },
   },
-  { _id: false }
+  { _id: true }
 );
 
 const ticketMessageSchema = new mongoose.Schema(

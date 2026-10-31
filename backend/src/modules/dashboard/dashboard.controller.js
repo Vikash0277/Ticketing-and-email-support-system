@@ -1,17 +1,14 @@
+import asyncHandler from "../../utils/asyncHandler.js";
+import { sendSuccess } from "../../utils/response.js";
 import * as dashboardService from "./dashboard.service.js";
 
-export async function getSummary(req, res, next) {
-  try {
-    const summary = await dashboardService.getDashboardSummary(
-      req.user
-    );
+export const getSummary = asyncHandler(async (req, res) => {
+  const summary = await dashboardService.getDashboardSummary(req.user);
 
-    return res.status(200).json({
-      success: true,
-      message: "Dashboard summary fetched successfully",
-      data: summary,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
+  return sendSuccess(
+    res,
+    200,
+    "Dashboard summary fetched successfully",
+    summary
+  );
+});

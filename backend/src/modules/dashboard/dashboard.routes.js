@@ -1,12 +1,27 @@
 import { Router } from "express";
-import { getSummary } from "./dashboard.controller.js";
 
-// Replace this import with the actual authentication middleware
-// used by your existing project.
+import { getSummary } from "./dashboard.controller.js";
 import { authenticate } from "../../middleware/auth.middleware.js";
 
 const router = Router();
 
-router.get("/summary", authenticate, getSummary);
+router.use(authenticate);
+
+/**
+ * @openapi
+ * /dashboard/summary:
+ *   get:
+ *     tags: [Dashboard]
+ *     summary: Role-aware dashboard summary
+ *     description: Returns ticket counts, a 14-day trend series and recent tickets. Admins also receive user totals.
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Dashboard summary }
+ *       401: { description: Authentication required }
+ */
+router.get("/summary", getSummary);
+
+// Backwards-compatible alias used by the original frontend.
+router.get("/stats", getSummary);
 
 export default router;

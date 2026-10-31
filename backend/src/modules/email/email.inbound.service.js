@@ -1,12 +1,15 @@
-import crypto from "node:crypto";
 import sanitizeHtml from "sanitize-html";
 
+import logger from "../../config/logger.js";
 import EmailEvent from "./emailEvent.model.js";
 import Ticket from "../tickets/ticket.model.js";
 import TicketMessage from "../ticketMessage/ticketMessage.model.js";
 import TicketActivity from "../ticketActivity/ticketActivity.model.js";
-import { getReceivedEmail } from "./email.provider.js";
-import { hashReplyToken } from "./email-token.js";
+import {
+  getReceivedEmail,
+  listReceivedAttachments,
+} from "./email.provider.js";
+import { extractReplyToken, hashReplyToken } from "./email-token.js";
 
 function normalizeEmail(value = "") {
   const match = String(value).match(/<([^>]+)>/);
@@ -18,8 +21,9 @@ function headerValue(headers, name) {
 
   if (Array.isArray(headers)) {
     const entry = headers.find(
-      (header) => header.key?.toLowerCase() === name.toLowerCase()
-        || header.name?.toLowerCase() === name.toLowerCase()
+      (header) =>
+        header.key?.toLowerCase() === name.toLowerCase() ||
+        header.name?.toLowerCase() === name.toLowerCase()
     );
     return entry?.value;
   }
@@ -31,27 +35,14 @@ function headerValue(headers, name) {
   return key ? headers[key] : undefined;
 }
 
-function extractReplyToken(recipients = []) {
-  for (const recipient of recipients) {
-    const email = normalizeEmail(recipient);
-    const match = email.match(/^reply\+([a-f0-9]{64})@/i);
-
-    if (match) return match[1];
-  }
-
-  return null;
-}
-
 function cleanPlainText(text = "") {
-  // Best-effort quoted-reply removal for common email clients.
   const quoteMarkers = [
     /^On .+wrote:$/im,
     /^From:\s.+$/im,
     /^-{2,}\s*Original Message\s*-{2,}$/im,
-    /^>{1}\s?/m,
   ];
 
-  let result = text;
+  let result = String(text);
 
   for (const marker of quoteMarkers) {
     const index = result.search(marker);
@@ -63,96 +54,98 @@ function cleanPlainText(text = "") {
   return result.trim();
 }
 
-function sanitizeIncomingBody(email) {
-  if (email.text?.trim()) {
-    return cleanPlainText(email.text);
+function sanitizeIncomingBody({ text, html }) {
+  if (text?.trim()) {
+    return cleanPlainText(text);
   }
 
-  // Convert incoming HTML into safe, plain text for storage.
-  return sanitizeHtml(email.html || "", {
+  return sanitizeHtml(html || "", {
     allowedTags: [],
     allowedAttributes: {},
   }).trim();
 }
 
-export async function processInboundResendEmail({
-  emailId,
-  providerEventId,
-}) {
-  const eventKey = providerEventId || `resend-received:${emailId}`;
+function normalizeAttachments(attachments = []) {
+  return attachments
+    .filter((attachment) => attachment?.filename)
+    .map((attachment) => ({
+      filename: attachment.filename,
+      contentType:
+        attachment.contentType || attachment.content_type || "application/octet-stream",
+      size: Number(attachment.size) || 0,
+      storageKey: attachment.storageKey || attachment.id || attachment.download_url,
+      url: attachment.url || attachment.download_url,
+      provider: attachment.provider || "resend",
+    }));
+}
 
-  // Claim the event once. The unique providerEventId index prevents
-  // duplicate processing when Resend retries a webhook.
+/**
+ * Shared inbound processing for both the live Resend webhook and the local
+ * simulator. Returns a small result object describing what happened.
+ */
+export async function processInboundEmailPayload(payload) {
+  const providerEventId =
+    payload.providerEventId ||
+    `inbound:${payload.messageId || payload.emailId || Date.now()}`;
+
   let event;
 
   try {
     event = await EmailEvent.create({
-      providerEventId: eventKey,
-      providerMessageId: emailId,
+      providerEventId,
+      providerMessageId: payload.emailId,
+      messageId: payload.messageId,
       direction: "inbound",
       status: "processing",
+      from: normalizeEmail(payload.from),
+      to: (payload.to || []).map(normalizeEmail),
+      subject: payload.subject || "",
       attempts: 1,
+      metadata: {
+        source: payload.source || "resend",
+        receivedAt: payload.receivedAt || new Date().toISOString(),
+      },
     });
   } catch (error) {
     if (error.code === 11000) {
       return { duplicate: true };
     }
-
     throw error;
   }
 
   try {
-    const email = await getReceivedEmail(emailId);
-
-    const from = normalizeEmail(email.from);
-    const to = Array.isArray(email.to) ? email.to : [email.to].filter(Boolean);
+    const from = normalizeEmail(payload.from);
+    const to = payload.to || [];
     const token = extractReplyToken(to);
-
-    const messageId =
-      email.message_id ||
-      headerValue(email.headers, "message-id") ||
-      `resend:${emailId}`;
-
-    event.from = from;
-    event.to = to.map(normalizeEmail);
-    event.subject = email.subject || "";
-    event.messageId = messageId;
-    event.metadata = {
-      resendEmailId: emailId,
-      inReplyTo: headerValue(email.headers, "in-reply-to"),
-      references: headerValue(email.headers, "references"),
-      receivedAt: email.created_at || new Date().toISOString(),
-    };
 
     if (!token) {
       event.status = "ignored";
       event.error = "No secure ticket reply address found";
       await event.save();
-      return { ignored: true };
+      return { ignored: true, reason: "missing-reply-token" };
     }
 
-    const tokenHash = hashReplyToken(token);
-
     const ticket = await Ticket.findOne({
-      emailReplyTokenHash: tokenHash,
+      emailReplyTokenHash: hashReplyToken(token),
     }).select("+emailReplyTokenHash");
 
     if (!ticket) {
       event.status = "ignored";
       event.error = "Invalid ticket reply token";
       await event.save();
-      return { ignored: true };
+      return { ignored: true, reason: "invalid-reply-token" };
     }
 
-    // Verify the sender; the reply token alone is not enough.
-    if (from !== ticket.requesterEmail.toLowerCase()) {
+    if (from !== String(ticket.requesterEmail).toLowerCase()) {
       event.status = "ignored";
       event.error = "Sender email does not match ticket requester";
       await event.save();
-      return { ignored: true };
+      return { ignored: true, reason: "sender-mismatch" };
     }
 
-    // Deduplicate by RFC Message-ID as well as provider event ID.
+    const messageId =
+      payload.messageId || `inbound:${event._id.toString()}`;
+
     const existingMessage = await TicketMessage.findOne({
       emailMessageId: messageId,
     });
@@ -166,38 +159,39 @@ export async function processInboundResendEmail({
       return { duplicate: true, ticketId: ticket._id };
     }
 
-    const body = sanitizeIncomingBody(email);
+    const body = sanitizeIncomingBody(payload);
 
     if (!body) {
       event.status = "ignored";
       event.error = "Inbound email contains no usable text";
       await event.save();
-      return { ignored: true };
+      return { ignored: true, reason: "empty-body" };
     }
 
-    const receivedAt = email.created_at
-      ? new Date(email.created_at)
+    const receivedAt = payload.receivedAt
+      ? new Date(payload.receivedAt)
       : new Date();
 
     const message = await TicketMessage.create({
       ticketId: ticket._id,
       senderId: ticket.requesterId ?? null,
-      senderName: from,
+      senderName: ticket.requesterName || from,
       senderEmail: from,
       senderRole: "customer",
       type: "public",
       body,
       source: "email",
       emailMessageId: messageId,
-      inReplyTo: headerValue(email.headers, "in-reply-to"),
-      references: headerValue(email.headers, "references"),
+      inReplyTo: payload.inReplyTo,
+      references: payload.references,
       receivedAt,
-      attachments: [],
+      attachments: normalizeAttachments(payload.attachments),
     });
 
     const oldStatus = ticket.status;
 
     ticket.lastMessageAt = receivedAt;
+    ticket.lastReplyBy = "customer";
 
     if (["resolved", "closed"].includes(ticket.status)) {
       ticket.status = "reopened";
@@ -235,10 +229,17 @@ export async function processInboundResendEmail({
     event.processedAt = new Date();
     await event.save();
 
+    logger.info("Inbound email processed", {
+      ticketId: ticket._id.toString(),
+      messageId: message._id.toString(),
+      reopened: ["resolved", "closed"].includes(oldStatus),
+    });
+
     return {
       processed: true,
       ticketId: ticket._id,
       messageId: message._id,
+      reopened: ["resolved", "closed"].includes(oldStatus),
     };
   } catch (error) {
     event.status = "failed";
@@ -247,3 +248,53 @@ export async function processInboundResendEmail({
     throw error;
   }
 }
+
+/**
+ * Live Resend flow: fetch the received email and its attachments by id, then
+ * feed it through the shared processor.
+ */
+export async function processInboundResendEmail({
+  emailId,
+  providerEventId,
+}) {
+  if (!emailId) {
+    throw new Error("emailId is required for inbound Resend processing");
+  }
+
+  const email = await getReceivedEmail(emailId);
+  const to = Array.isArray(email.to)
+    ? email.to
+    : [email.to].filter(Boolean);
+
+  let attachments = [];
+
+  try {
+    attachments = await listReceivedAttachments(emailId);
+  } catch (error) {
+    logger.warn("Unable to load inbound attachments", {
+      emailId,
+      message: error.message,
+    });
+  }
+
+  return processInboundEmailPayload({
+    emailId,
+    providerEventId: providerEventId || `resend-received:${emailId}`,
+    from: email.from,
+    to,
+    subject: email.subject,
+    text: email.text,
+    html: email.html,
+    messageId:
+      email.message_id ||
+      headerValue(email.headers, "message-id") ||
+      `resend:${emailId}`,
+    inReplyTo: headerValue(email.headers, "in-reply-to"),
+    references: headerValue(email.headers, "references"),
+    receivedAt: email.created_at,
+    attachments,
+    source: "resend",
+  });
+}
+
+export default processInboundResendEmail;

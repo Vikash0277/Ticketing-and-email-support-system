@@ -13,12 +13,12 @@ if (typeof window !== "undefined") {
 
     try {
       if (user) {
-        window.localStorage.setItem(
+        localStorage.setItem(
           AUTH_SESSION_STORAGE_KEY,
           JSON.stringify({ user, accessToken, refreshToken }),
         );
       } else {
-        window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
+        localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
       }
     } catch (error) {
       console.error("Unable to save the authentication session.", error);

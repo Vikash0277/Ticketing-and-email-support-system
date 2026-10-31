@@ -9,14 +9,14 @@ const getPersistedSession = () => {
     }
 
     try {
-        const serializedSession = window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY);
+        const serializedSession = localStorage.getItem(AUTH_SESSION_STORAGE_KEY);
         if (!serializedSession) {
             return {};
         }
 
         const session = JSON.parse(serializedSession);
         if (!session?.user || typeof session.user !== "object") {
-            window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
+            localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
             return {};
         }
 
@@ -27,7 +27,7 @@ const getPersistedSession = () => {
         };
     } catch (error) {
         console.error("Unable to restore the saved authentication session.", error);
-        window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
+        localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
         return {};
     }
 };
@@ -175,13 +175,38 @@ const authSlice = createSlice({
             state.isSuccess = false;
             state.isOtpLoading = false;
             state.isOtpSuccess = false;
+            state.isResendingOtp = false;
+            state.isLoginLoading = false;
+            state.isLoginSuccess = false;
+            state.isOtpLoginLoading = false;
+            state.isOtpLoginSent = false;
+            state.isOtpLoginSuccess = false;
+            state.isForgotPasswordLoading = false;
+            state.isForgotPasswordSuccess = false;
+            state.isResetPasswordLoading = false;
+            state.isResetPasswordSuccess = false;
             state.isError = false;
             state.message = "";
         },
         clearRegistrationData: (state) => {
             state.registrationData = null;
         },
-        clearAuth: () => ({ ...initialState, user: null, accessToken: null, refreshToken: null }),
+        setSession: (state, action) => {
+            const session = action.payload ?? {};
+
+            state.user = session.user ?? state.user;
+            state.accessToken = session.accessToken ?? state.accessToken;
+            state.refreshToken = session.refreshToken ?? state.refreshToken;
+        },
+        setUser: (state, action) => {
+            state.user = action.payload ?? null;
+        },
+        clearAuth: () => ({
+            ...initialState,
+            user: null,
+            accessToken: null,
+            refreshToken: null,
+        }),
     },
     extraReducers: (builder) => {
         builder
@@ -340,6 +365,12 @@ const authSlice = createSlice({
     },
 });
 
-export const { resetAuthState, clearRegistrationData, clearAuth } = authSlice.actions;
+export const {
+    resetAuthState,
+    clearRegistrationData,
+    setSession,
+    setUser,
+    clearAuth,
+} = authSlice.actions;
 
 export default authSlice.reducer;
