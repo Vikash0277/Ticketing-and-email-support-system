@@ -58,7 +58,7 @@ export default function ForgotPassword() {
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-indigo-700">
             <Headset size={25} />
           </span>
-          <span className="text-xl font-bold tracking-tight">SupportDesk</span>
+          <span className="text-xl font-bold tracking-tight">BitMax</span>
         </Link>
 
         <div className="relative max-w-lg">
@@ -75,7 +75,7 @@ export default function ForgotPassword() {
         </div>
 
         <p className="relative text-xs text-indigo-200">
-          © {new Date().getFullYear()} SupportDesk. All rights reserved.
+          © {new Date().getFullYear()} BitMax. All rights reserved.
         </p>
       </section>
 
@@ -86,7 +86,7 @@ export default function ForgotPassword() {
             className="mb-10 flex items-center justify-center gap-2 text-lg font-bold text-indigo-700 lg:hidden"
           >
             <Headset size={25} />
-            SupportDesk
+            BitMax
           </Link>
 
           <Link

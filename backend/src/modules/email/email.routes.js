@@ -8,6 +8,7 @@ import {
 } from "./email.controller.js";
 import { authenticate, authorize } from "../../middleware/auth.middleware.js";
 import { validate } from "../../middleware/validate.middleware.js";
+import { inboundEmailLimiter } from "../../middleware/rate-limit.middleware.js";
 import { verifyResendWebhook } from "../../middleware/email.webhook.middleware.js";
 import {
   sendOutboundEmailSchema,
@@ -28,7 +29,7 @@ const router = Router();
  *       200: { description: Webhook processed }
  *       401: { description: Invalid signature }
  */
-router.post("/inbound", verifyResendWebhook, inboundWebhook);
+router.post("/inbound", inboundEmailLimiter, verifyResendWebhook, inboundWebhook);
 
 /**
  * @openapi

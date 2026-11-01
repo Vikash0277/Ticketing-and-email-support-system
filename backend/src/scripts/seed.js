@@ -80,7 +80,7 @@ async function seedUsers() {
         },
         $unset: { lockedUntil: "" },
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
+      { returnDocument: "after", upsert: true, setDefaultsOnInsert: true }
     );
 
     users[account.role] = user;
@@ -103,7 +103,7 @@ async function seedCategories(admin) {
           createdBy: admin._id,
         },
       },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
+      { returnDocument: "after", upsert: true, setDefaultsOnInsert: true }
     );
 
     categories[category.name] = doc;

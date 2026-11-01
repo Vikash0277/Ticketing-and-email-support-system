@@ -85,6 +85,7 @@ const options = {
       { name: "Users", description: "User administration" },
       { name: "Notifications", description: "In-app notifications" },
       { name: "Email", description: "Outbound and inbound email" },
+      { name: "Attachments", description: "Local attachment downloads" },
       { name: "Health", description: "Service health" },
     ],
   },

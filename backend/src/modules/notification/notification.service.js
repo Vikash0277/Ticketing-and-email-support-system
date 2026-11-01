@@ -83,7 +83,7 @@ export async function markRead(user, notificationId) {
   const notification = await Notification.findOneAndUpdate(
     { _id: notificationId, userId },
     { $set: { isRead: true, readAt: new Date() } },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!notification) throw ApiError.notFound("Notification not found");

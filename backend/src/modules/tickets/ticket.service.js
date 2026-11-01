@@ -407,8 +407,10 @@ export async function updateTicketStatus(ticketId, data, user) {
     return ticket;
   }
 
-  if (!isStaff(user) && nextStatus !== "reopened") {
-    throw ApiError.forbidden("Only support staff can change ticket status");
+  if (!isStaff(user) && !["reopened", "closed"].includes(nextStatus)) {
+    throw ApiError.forbidden(
+      "Only support staff can change ticket status; customers may reopen or close their own tickets"
+    );
   }
 
   const allowed = STATUS_TRANSITIONS[oldStatus] ?? [];

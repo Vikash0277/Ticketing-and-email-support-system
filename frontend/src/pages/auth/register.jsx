@@ -81,7 +81,7 @@ export default function Register() {
 
     const normalizedPhone = form.phone.replace(/[\s()-]/g, "");
 
-    if (!/^\+?[1-9]\d{7,14}$/.test(normalizedPhone)) {
+    if (normalizedPhone && !/^\+?[1-9]\d{7,14}$/.test(normalizedPhone)) {
       nextErrors.phone = "Enter a valid phone number with country code.";
     }
 
@@ -116,9 +116,11 @@ export default function Register() {
     const userData = {
       name: form.name.trim(),
       email: form.email.trim().toLowerCase(),
-      phone: form.phone.replace(/[\s()-]/g, ""),
       password: form.password,
     };
+
+    const normalizedPhone = form.phone.replace(/[\s()-]/g, "");
+    if (normalizedPhone) userData.phone = normalizedPhone;
 
     try {
       await dispatch(registerUser(userData)).unwrap();
@@ -152,6 +154,7 @@ export default function Register() {
     autoComplete,
     togglePassword,
     passwordVisible,
+    required = true,
   }) => (
     <div>
       <label
@@ -179,7 +182,7 @@ export default function Register() {
           aria-invalid={Boolean(errors[name])}
           aria-describedby={errors[name] ? `${name}-error` : undefined}
           className={`${inputClass} ${togglePassword ? "pr-12" : ""}`}
-          required
+          required={required}
         />
 
         {togglePassword && (
@@ -213,7 +216,7 @@ export default function Register() {
           <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-indigo-700">
             <Headset size={25} />
           </span>
-          <span className="text-xl font-bold tracking-tight">SupportDesk</span>
+          <span className="text-xl font-bold tracking-tight">BitMax</span>
         </Link>
 
         <div className="relative max-w-lg">
@@ -247,7 +250,7 @@ export default function Register() {
         </div>
 
         <p className="relative text-xs text-indigo-200">
-          © {new Date().getFullYear()} SupportDesk. All rights reserved.
+          © {new Date().getFullYear()} BitMax. All rights reserved.
         </p>
       </section>
 
@@ -259,7 +262,7 @@ export default function Register() {
             className="mb-9 flex items-center justify-center gap-2 text-lg font-bold text-indigo-700 lg:hidden"
           >
             <Headset size={25} />
-            SupportDesk
+            BitMax
           </Link>
 
           <div className="mb-8">
@@ -304,12 +307,13 @@ export default function Register() {
             })}
 
             {renderField({
-              label: "Phone number",
+              label: "Phone number (optional)",
               name: "phone",
               type: "tel",
               placeholder: "+91 9876543210",
               icon: Phone,
               autoComplete: "tel",
+              required: false,
             })}
 
             {renderField({

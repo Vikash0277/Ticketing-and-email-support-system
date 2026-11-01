@@ -13,14 +13,16 @@ import {
 
 import {
   changePassword,
-  getMe,
   listSessions,
   logoutAll,
   revokeSession,
-  updateMe,
 } from "../api/auth";
 import { getErrorMessage } from "../api/client";
-import { clearAuth, setUser } from "../redux/auth/authSlice";
+import {
+  clearAuth,
+  fetchCurrentUser,
+  updateProfile,
+} from "../redux/auth/authSlice";
 import {
   Alert,
   Avatar,
@@ -72,7 +74,6 @@ export default function ProfilePage() {
   const navigate = useNavigate();
   const currentUser = useSelector((state) => state.auth.user);
 
-  const [profile, setProfile] = useState(null);
   const [form, setForm] = useState({
     name: "",
     phone: "",
@@ -111,22 +112,25 @@ export default function ProfilePage() {
       setError("");
 
       try {
-        const [me] = await Promise.all([getMe(), loadSessions()]);
+        const [userResult] = await Promise.all([
+          dispatch(fetchCurrentUser()).unwrap(),
+          loadSessions(),
+        ]);
 
         if (!active) return;
 
-        setProfile(me);
         setForm({
-          name: me.name ?? "",
-          phone: me.phone ?? "",
-          jobTitle: me.jobTitle ?? "",
-          avatarUrl: me.avatarUrl ?? "",
+          name: userResult.name ?? "",
+          phone: userResult.phone ?? "",
+          jobTitle: userResult.jobTitle ?? "",
+          avatarUrl: userResult.avatarUrl ?? "",
         });
-        dispatch(setUser(me));
       } catch (requestError) {
         if (active) {
           setError(
-            getErrorMessage(requestError, "Unable to load your profile")
+            typeof requestError === "string"
+              ? requestError
+              : getErrorMessage(requestError, "Unable to load your profile")
           );
         }
       } finally {
@@ -160,18 +164,22 @@ export default function ProfilePage() {
     setNotice("");
 
     try {
-      const updated = await updateMe({
-        name: form.name.trim(),
-        phone: form.phone.trim(),
-        jobTitle: form.jobTitle.trim(),
-        avatarUrl: form.avatarUrl.trim(),
-      });
+      await dispatch(
+        updateProfile({
+          name: form.name.trim(),
+          phone: form.phone.trim(),
+          jobTitle: form.jobTitle.trim(),
+          avatarUrl: form.avatarUrl.trim(),
+        })
+      ).unwrap();
 
-      setProfile(updated);
-      dispatch(setUser(updated));
       setNotice("Profile updated");
     } catch (requestError) {
-      setError(getErrorMessage(requestError, "Unable to update your profile"));
+      setError(
+        typeof requestError === "string"
+          ? requestError
+          : getErrorMessage(requestError, "Unable to update your profile")
+      );
     } finally {
       setSavingProfile(false);
     }
@@ -254,9 +262,9 @@ export default function ProfilePage() {
     }
   };
 
-  if (loading) return <PageLoader label="Loading your profile…" />;
+  if (loading) return <PageLoader message="Loading your profile…" />;
 
-  const user = profile ?? currentUser ?? {};
+  const user = currentUser ?? {};
 
   return (
     <div>

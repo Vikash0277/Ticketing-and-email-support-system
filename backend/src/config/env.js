@@ -11,6 +11,8 @@ const envSchema = z.object({
 
   MONGODB_URI: z.string().min(1, "MONGODB_URI is required"),
   REDIS_URL: optionalString,
+  // Backwards-compatible alias used by the original project configuration.
+  REDIS_ADDRESS: optionalString,
 
   JWT_ACCESS_SECRET: z.string().min(8, "JWT_ACCESS_SECRET is required"),
   TOKEN_HASH_SECRET: z.string().min(8, "TOKEN_HASH_SECRET is required"),
@@ -43,6 +45,9 @@ if (!parsed.success) {
 }
 
 const raw = parsed.data;
+
+// Support the legacy REDIS_ADDRESS variable without duplicating configuration.
+raw.REDIS_URL = raw.REDIS_URL || raw.REDIS_ADDRESS;
 
 export const env = {
   ...raw,

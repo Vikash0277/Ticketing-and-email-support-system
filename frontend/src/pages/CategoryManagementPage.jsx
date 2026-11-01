@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import {
   CheckCircle2,
   FolderTree,
@@ -10,11 +11,11 @@ import {
 } from "lucide-react";
 
 import {
-  createCategory,
-  deleteCategory,
-  listCategories,
-  updateCategory,
-} from "../api/resources";
+  createCategoryThunk,
+  deleteCategoryThunk,
+  fetchCategories,
+  updateCategoryThunk,
+} from "../redux/categories/categoriesSlice";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import {
   Alert,
@@ -34,12 +35,17 @@ import { formatDate } from "../utils/format";
 const EMPTY_FORM = { name: "", description: "" };
 
 export default function CategoryManagementPage() {
-  const [categories, setCategories] = useState([]);
-  const [pagination, setPagination] = useState(null);
+  const dispatch = useDispatch();
+  const {
+    items: categories,
+    pagination,
+    isLoading: loading,
+    error: reduxError,
+  } = useSelector((state) => state.categories);
+
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -59,31 +65,22 @@ export default function CategoryManagementPage() {
     return () => window.clearTimeout(timer);
   }, [searchInput]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const result = await listCategories({
+  const load = useCallback(() => {
+    return dispatch(
+      fetchCategories({
         page,
         limit: 20,
         search,
         includeInactive: "true",
-      });
-
-      setCategories(result.items);
-      setPagination(result.pagination);
-    } catch (requestError) {
-      setError(
-        getErrorMessage(requestError, "Unable to load categories right now")
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [page, search]);
+      })
+    );
+  }, [dispatch, page, search]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => load(), 0);
+    const timer = window.setTimeout(() => {
+      setError("");
+      load();
+    }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
 
@@ -130,25 +127,34 @@ export default function CategoryManagementPage() {
 
     try {
       if (modal.category) {
-        await updateCategory(modal.category._id, {
-          name: form.name.trim(),
-          description: form.description.trim(),
-        });
+        await dispatch(
+          updateCategoryThunk({
+            categoryId: modal.category._id,
+            payload: {
+              name: form.name.trim(),
+              description: form.description.trim(),
+            },
+          })
+        ).unwrap();
         setNotice("Category updated");
       } else {
-        await createCategory({
-          name: form.name.trim(),
-          description: form.description.trim(),
-        });
+        await dispatch(
+          createCategoryThunk({
+            name: form.name.trim(),
+            description: form.description.trim(),
+          })
+        ).unwrap();
         setNotice("Category created");
       }
 
       setModal({ open: false, category: null });
-      await load();
+      load();
     } catch (requestError) {
       setFieldErrors(getFieldErrors(requestError));
       setFormError(
-        getErrorMessage(requestError, "Unable to save this category")
+        typeof requestError === "string"
+          ? requestError
+          : getErrorMessage(requestError, "Unable to save this category")
       );
     } finally {
       setSaving(false);
@@ -160,12 +166,21 @@ export default function CategoryManagementPage() {
     setError("");
 
     try {
-      await updateCategory(category._id, { isActive: !category.isActive });
-      setNotice(category.isActive ? "Category deactivated" : "Category activated");
-      await load();
+      await dispatch(
+        updateCategoryThunk({
+          categoryId: category._id,
+          payload: { isActive: !category.isActive },
+        })
+      ).unwrap();
+      setNotice(
+        category.isActive ? "Category deactivated" : "Category activated"
+      );
+      load();
     } catch (requestError) {
       setError(
-        getErrorMessage(requestError, "Unable to update this category")
+        typeof requestError === "string"
+          ? requestError
+          : getErrorMessage(requestError, "Unable to update this category")
       );
     } finally {
       setBusyId("");
@@ -185,17 +200,21 @@ export default function CategoryManagementPage() {
     setError("");
 
     try {
-      await deleteCategory(category._id);
+      await dispatch(deleteCategoryThunk(category._id)).unwrap();
       setNotice("Category deactivated");
-      await load();
+      load();
     } catch (requestError) {
       setError(
-        getErrorMessage(requestError, "Unable to deactivate this category")
+        typeof requestError === "string"
+          ? requestError
+          : getErrorMessage(requestError, "Unable to deactivate this category")
       );
     } finally {
       setBusyId("");
     }
   };
+
+  const displayError = error || reduxError;
 
   return (
     <div>
@@ -215,7 +234,7 @@ export default function CategoryManagementPage() {
           {notice}
         </Alert>
       ) : null}
-      {error ? <Alert className="mb-4">{error}</Alert> : null}
+      {displayError ? <Alert className="mb-4">{displayError}</Alert> : null}
 
       <Card className="mb-4 p-4">
         <div className="relative max-w-md">

@@ -1,5 +1,7 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import authService from "./authService";
+import { getMe, updateMe, logout as logoutApi } from "../../api/auth";
+import { getErrorMessage } from "../../api/client";
 
 export const AUTH_SESSION_STORAGE_KEY = "authSession";
 
@@ -41,10 +43,7 @@ export const registerUser = createAsyncThunk(
             return await authService.register(userData);
         } catch (error) {
             return rejectWithValue(
-                error.response?.data?.message ||
-                error.response?.data?.error ||
-                error.message ||
-                "Registration failed. Please try again."
+                getErrorMessage(error, "Registration failed. Please try again.")
             );
         }
     }
@@ -57,7 +56,7 @@ export const verifyOtp = createAsyncThunk(
             return await authService.verifyOtp(data);
         } catch (error) {
             return thunkAPI.rejectWithValue(
-                error.response?.data?.message || "OTP verification failed."
+                getErrorMessage(error, "OTP verification failed.")
             );
         }
     }
@@ -70,7 +69,7 @@ export const resendOtp = createAsyncThunk(
             return await authService.resendOtp(data);
         } catch (error) {
             return thunkAPI.rejectWithValue(
-                error.response?.data?.message || "Could not resend OTP."
+                getErrorMessage(error, "Could not resend OTP.")
             );
         }
     }
@@ -83,7 +82,7 @@ export const loginUser = createAsyncThunk(
             return await authService.login(credentials);
         } catch (error) {
             return thunkAPI.rejectWithValue(
-                error.response?.data?.message || "Unable to sign in."
+                getErrorMessage(error, "Unable to sign in.")
             );
         }
     }
@@ -96,7 +95,7 @@ export const requestLoginOtp = createAsyncThunk(
             return await authService.requestLoginOtp(data);
         } catch (error) {
             return thunkAPI.rejectWithValue(
-                error.response?.data?.message || "Unable to send OTP."
+                getErrorMessage(error, "Unable to send OTP.")
             );
         }
     }
@@ -109,7 +108,7 @@ export const verifyLoginOtp = createAsyncThunk(
             return await authService.verifyLoginOtp(data);
         } catch (error) {
             return thunkAPI.rejectWithValue(
-                error.response?.data?.message || "Invalid or expired OTP."
+                getErrorMessage(error, "Invalid or expired OTP.")
             );
         }
     }
@@ -122,8 +121,7 @@ export const forgotPassword = createAsyncThunk(
             return await authService.forgotPassword(data);
         } catch (error) {
             return thunkAPI.rejectWithValue(
-                error.response?.data?.message ||
-                "Unable to process your request."
+                getErrorMessage(error, "Unable to process your request.")
             );
         }
     }
@@ -136,10 +134,50 @@ export const resetPassword = createAsyncThunk(
             return await authService.resetPassword(data);
         } catch (error) {
             return thunkAPI.rejectWithValue(
-                error.response?.data?.message ||
-                "Unable to reset your password."
+                getErrorMessage(error, "Unable to reset your password.")
             );
         }
+    }
+);
+
+export const fetchCurrentUser = createAsyncThunk(
+    "auth/fetchCurrentUser",
+    async (_, { rejectWithValue }) => {
+        try {
+            return await getMe();
+        } catch (error) {
+            return rejectWithValue(
+                getErrorMessage(error, "Unable to load profile.")
+            );
+        }
+    }
+);
+
+export const updateProfile = createAsyncThunk(
+    "auth/updateProfile",
+    async (payload, { rejectWithValue }) => {
+        try {
+            return await updateMe(payload);
+        } catch (error) {
+            return rejectWithValue(
+                getErrorMessage(error, "Unable to update profile.")
+            );
+        }
+    }
+);
+
+export const logoutUser = createAsyncThunk(
+    "auth/logoutUser",
+    async (_, { getState }) => {
+        const refreshToken = getState().auth.refreshToken;
+        try {
+            if (refreshToken) {
+                await logoutApi(refreshToken);
+            }
+        } catch {
+            // Clear session regardless of network response
+        }
+        return true;
     }
 );
 
@@ -154,6 +192,7 @@ const initialState = {
     isError: false,
     isOtpLoading: false,
     isOtpSuccess: false,
+    isResendingOtp: false,
     isLoginLoading: false,
     isLoginSuccess: false,
     isOtpLoginLoading: false,
@@ -163,6 +202,7 @@ const initialState = {
     isForgotPasswordSuccess: false,
     isResetPasswordLoading: false,
     isResetPasswordSuccess: false,
+    isProfileLoading: false,
     message: "",
 };
 
@@ -320,9 +360,15 @@ const authSlice = createSlice({
                 const authData = getAuthData(action.payload);
 
                 state.user = authData?.user ?? null;
-                state.accessToken = authData?.accessToken ?? null;     
+                state.accessToken = authData?.accessToken ?? null;
                 state.refreshToken = authData?.refreshToken ?? null;
                 state.message = action.payload?.message || "Login successful.";
+            })
+            .addCase(verifyLoginOtp.rejected, (state, action) => {
+                state.isOtpLoginLoading = false;
+                state.isOtpLoginSuccess = false;
+                state.isError = true;
+                state.message = action.payload || "Invalid or expired OTP.";
             })
             // Forgot password
             .addCase(forgotPassword.pending, (state) => {
@@ -362,6 +408,37 @@ const authSlice = createSlice({
                 state.isError = true;
                 state.message = action.payload;
             })
+
+            // Fetch current user
+            .addCase(fetchCurrentUser.pending, (state) => {
+                state.isProfileLoading = true;
+            })
+            .addCase(fetchCurrentUser.fulfilled, (state, action) => {
+                state.isProfileLoading = false;
+                state.user = action.payload;
+            })
+            .addCase(fetchCurrentUser.rejected, (state) => {
+                state.isProfileLoading = false;
+            })
+
+            // Update profile
+            .addCase(updateProfile.pending, (state) => {
+                state.isProfileLoading = true;
+            })
+            .addCase(updateProfile.fulfilled, (state, action) => {
+                state.isProfileLoading = false;
+                state.user = action.payload;
+            })
+            .addCase(updateProfile.rejected, (state) => {
+                state.isProfileLoading = false;
+            })
+
+            // Logout user
+            .addCase(logoutUser.fulfilled, (state) => {
+                state.user = null;
+                state.accessToken = null;
+                state.refreshToken = null;
+            });
     },
 });
 

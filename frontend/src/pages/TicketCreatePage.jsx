@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { ArrowLeft, Paperclip, Send, X } from "lucide-react";
 
-import { createTicket } from "../api/tickets";
-import { listCategories } from "../api/resources";
+import { createTicketThunk } from "../redux/tickets/ticketsSlice";
+import { fetchCategoryOptions } from "../redux/categories/categoriesSlice";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import {
   Alert,
@@ -24,11 +24,12 @@ const PRIORITIES = [
 ];
 
 export default function TicketCreatePage() {
+  const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
   const role = user?.role ?? "customer";
   const navigate = useNavigate();
 
-  const [categories, setCategories] = useState([]);
+  const categories = useSelector((state) => state.categories.options);
   const [form, setForm] = useState({
     subject: "",
     description: "",
@@ -42,29 +43,17 @@ export default function TicketCreatePage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    let active = true;
-
-    listCategories({ limit: 100 })
-      .then((result) => {
-        if (!active) return;
-        setCategories(result.items);
-
-        if (result.items.length > 0) {
-          setForm((previous) =>
-            previous.categoryId
-              ? previous
-              : { ...previous, categoryId: result.items[0]._id }
-          );
-        }
-      })
-      .catch((requestError) => {
-        if (active) setError(getErrorMessage(requestError));
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
+    dispatch(fetchCategoryOptions()).then((action) => {
+      const items = action.payload || [];
+      if (items.length > 0) {
+        setForm((previous) =>
+          previous.categoryId
+            ? previous
+            : { ...previous, categoryId: items[0]._id }
+        );
+      }
+    });
+  }, [dispatch]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -114,20 +103,24 @@ export default function TicketCreatePage() {
         .filter(Boolean)
         .slice(0, 10);
 
-      const ticket = await createTicket({
-        subject: form.subject.trim(),
-        description: form.description.trim(),
-        categoryId: form.categoryId,
-        priority: form.priority,
-        tags,
-        attachments: files,
-      });
+      const ticket = await dispatch(
+        createTicketThunk({
+          subject: form.subject.trim(),
+          description: form.description.trim(),
+          categoryId: form.categoryId,
+          priority: form.priority,
+          tags,
+          attachments: files,
+        })
+      ).unwrap();
 
       navigate(`/${role}/tickets/${ticket._id}`, { replace: true });
     } catch (requestError) {
       setErrors(getFieldErrors(requestError));
       setError(
-        getErrorMessage(requestError, "Unable to create the ticket right now")
+        typeof requestError === "string"
+          ? requestError
+          : getErrorMessage(requestError, "Unable to create the ticket right now")
       );
     } finally {
       setLoading(false);
