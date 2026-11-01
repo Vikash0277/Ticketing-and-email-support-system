@@ -11,6 +11,7 @@
     "start": "node server.js",
     "start:worker": "node src/workers/email.worker.js",
     "seed": "node src/scripts/seed.js",
+    "seed:categories": "node src/scripts/seed-categories.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },

@@ -177,7 +177,13 @@ Useful scripts:
 | `npm run dev:worker` | email worker only |
 | `npm start` / `npm run start:worker` | production API / worker |
 | `npm run seed -- --reset` | wipe and reseed development data |
+| `npm run seed:categories` | safely add default categories without changing users or tickets |
 | `npm test` | run the Vitest integration suite |
+
+For a deployed database with no ticket categories, run `npm run seed:categories`
+once from the backend service shell. This only inserts missing default
+categories; unlike the development seed command, it does not create demo
+accounts or tickets and does not reset existing data.
 
 ### 2. Frontend
 

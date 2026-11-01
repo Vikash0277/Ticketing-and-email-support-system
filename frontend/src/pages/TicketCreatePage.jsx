@@ -29,7 +29,11 @@ export default function TicketCreatePage() {
   const role = user?.role ?? "customer";
   const navigate = useNavigate();
 
-  const categories = useSelector((state) => state.categories.options);
+  const {
+    options: categories,
+    isOptionsLoading,
+    optionsError,
+  } = useSelector((state) => state.categories);
   const [form, setForm] = useState({
     subject: "",
     description: "",
@@ -169,20 +173,44 @@ export default function TicketCreatePage() {
               htmlFor="categoryId"
               error={errors.categoryId}
             >
+              {optionsError ? (
+                <Alert>
+                  {optionsError}{" "}
+                  <button
+                    type="button"
+                    className="font-semibold underline"
+                    onClick={() => dispatch(fetchCategoryOptions(true))}
+                  >
+                    Try again
+                  </button>
+                </Alert>
+              ) : null}
               <select
                 id="categoryId"
                 name="categoryId"
                 value={form.categoryId}
                 onChange={handleChange}
                 className={inputClass}
+                disabled={isOptionsLoading || categories.length === 0}
               >
-                <option value="">Select a category</option>
+                <option value="">
+                  {isOptionsLoading
+                    ? "Loading categories..."
+                    : categories.length
+                      ? "Select a category"
+                      : "No categories available"}
+                </option>
                 {categories.map((category) => (
                   <option key={category._id} value={category._id}>
                     {category.name}
                   </option>
                 ))}
               </select>
+              {!isOptionsLoading && !optionsError && categories.length === 0 ? (
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Ask an administrator to add an active ticket category.
+                </p>
+              ) : null}
             </Field>
 
             <Field label="Priority" htmlFor="priority" error={errors.priority}>
