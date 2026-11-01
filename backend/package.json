@@ -5,11 +5,9 @@
   "main": "server.js",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n api,worker -c blue,magenta \"nodemon server.js\" \"nodemon src/workers/email.worker.js\"",
+    "dev": "nodemon server.js",
     "dev:api": "nodemon server.js",
-    "dev:worker": "nodemon src/workers/email.worker.js",
     "start": "node server.js",
-    "start:worker": "node src/workers/email.worker.js",
     "seed": "node src/scripts/seed.js",
     "seed:categories": "node src/scripts/seed-categories.js",
     "test": "vitest run",
@@ -25,14 +23,12 @@
   "license": "ISC",
   "dependencies": {
     "bcryptjs": "^3.0.3",
-    "bullmq": "^6.5.1",
     "cloudinary": "^2.11.0",
     "cors": "^2.8.6",
     "dotenv": "^18.0.9",
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.2",
     "helmet": "^8.3.0",
-    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.11.4",
     "morgan": "^1.12.1",
@@ -48,7 +44,6 @@
   },
   "devDependencies": {
     "@types/sanitize-html": "^2.16.2",
-    "concurrently": "^10.0.6",
     "mongodb-memory-server": "^11.3.0",
     "supertest": "^7.3.1",
     "vitest": "^5.0.5"

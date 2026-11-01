@@ -9,9 +9,9 @@ import TicketActivity from "../ticketActivity/ticketActivity.model.js";
 import Category from "../categories/category.model.js";
 import User from "../user/user.model.js";
 import {
-  queueAssignmentNotification,
-  queueTicketConfirmation,
-  queueStatusNotification,
+  sendAssignmentNotification,
+  sendTicketConfirmation,
+  sendStatusNotification,
 } from "../email/email.outbound.email.js";
 import { createNotification } from "../notification/notification.service.js";
 
@@ -173,7 +173,7 @@ export async function createTicket(data, user, attachments = []) {
   await ticket.populate(POPULATE);
 
   // Email failures must never block ticket creation.
-  await queueTicketConfirmation(ticket);
+  await sendTicketConfirmation(ticket);
 
   await createNotification({
     userId: getUserId(user),
@@ -459,7 +459,7 @@ export async function updateTicketStatus(ticketId, data, user) {
 
   await ticket.populate(POPULATE);
 
-  await queueStatusNotification(ticket);
+  await sendStatusNotification(ticket);
 
   await createNotification({
     userId: ticket.requesterId,
@@ -556,7 +556,7 @@ export async function assignTicket(ticketId, data, user) {
   await ticket.populate(POPULATE);
 
   if (agent) {
-    await queueAssignmentNotification(ticket, agent, Boolean(previousAssignee));
+    await sendAssignmentNotification(ticket, agent, Boolean(previousAssignee));
 
     await createNotification({
       userId: agent._id,

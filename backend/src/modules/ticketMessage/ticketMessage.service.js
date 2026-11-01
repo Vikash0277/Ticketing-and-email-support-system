@@ -6,8 +6,8 @@ import Ticket from "../tickets/ticket.model.js";
 import TicketMessage from "./ticketMessage.model.js";
 import TicketActivity from "../ticketActivity/ticketActivity.model.js";
 import {
-  queueAgentReply,
-  queueCustomerMessage,
+  sendAgentReply,
+  sendCustomerMessage,
 } from "../email/email.outbound.email.js";
 import { createNotification } from "../notification/notification.service.js";
 import User from "../user/user.model.js";
@@ -151,7 +151,7 @@ export async function createTicketMessage(
     const freshTicket = await Ticket.findById(ticket._id);
 
     if (isStaff(user)) {
-      await queueAgentReply(freshTicket, message.body);
+      await sendAgentReply(freshTicket, message.body);
 
       await createNotification({
         userId: freshTicket.requesterId,
@@ -162,7 +162,7 @@ export async function createTicketMessage(
         metadata: { ticketNumber: freshTicket.ticketNumber },
       });
     } else {
-      await queueCustomerMessage(freshTicket, message.body);
+      await sendCustomerMessage(freshTicket, message.body);
 
       if (freshTicket.assignedTo) {
         await createNotification({

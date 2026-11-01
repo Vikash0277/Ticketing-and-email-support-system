@@ -1,9 +1,8 @@
 import env from "../../config/env.js";
 import logger from "../../config/logger.js";
 import EmailEvent from "./emailEvent.model.js";
-import Ticket from "../tickets/ticket.model.js";
 import User from "../user/user.model.js";
-import { dispatchEmail } from "../../queues/email.dispatcher.js";
+import { dispatchEmail } from "./email.dispatcher.js";
 import {
   createReplyToken,
   hashReplyToken,
@@ -39,7 +38,7 @@ async function ensureReplyToken(ticket) {
   return makeReplyAddress(token);
 }
 
-async function enqueueOutbound({
+async function sendOutboundEmail({
   ticket,
   recipient,
   subject,
@@ -51,7 +50,7 @@ async function enqueueOutbound({
   const event = await EmailEvent.create({
     ticketId: ticket._id,
     direction: "outbound",
-    status: "queued",
+    status: "processing",
     from: env.EMAIL_FROM,
     to: [recipient],
     subject,
@@ -81,24 +80,24 @@ async function enqueueOutbound({
     event.error = error.message;
     await event.save();
 
-    return null;
+    throw error;
   }
 
-  return event;
+  return EmailEvent.findById(event._id);
 }
 
-async function safeQueue(kind, fn) {
+async function safeSend(kind, fn) {
   try {
     return await fn();
   } catch (error) {
-    logger.error(`Failed to queue ${kind} email`, {
+    logger.error(`Failed to send ${kind} email`, {
       message: error.message,
     });
     return null;
   }
 }
 
-export async function queueTicketConfirmation(ticket) {
+export async function sendTicketConfirmation(ticket) {
   if (!emailThreadingEnabled()) {
     logger.info("Ticket confirmation email skipped (email threading disabled)", {
       ticketId: ticket._id.toString(),
@@ -106,11 +105,11 @@ export async function queueTicketConfirmation(ticket) {
     return null;
   }
 
-  return safeQueue("ticket-created", async () => {
+  return safeSend("ticket-created", async () => {
     const replyTo = await ensureReplyToken(ticket);
     const template = ticketCreatedTemplate(ticket);
 
-    return enqueueOutbound({
+    return sendOutboundEmail({
       ticket,
       recipient: ticket.requesterEmail,
       ...template,
@@ -120,17 +119,17 @@ export async function queueTicketConfirmation(ticket) {
   });
 }
 
-export async function queueAssignmentNotification(
+export async function sendAssignmentNotification(
   ticket,
   agent,
   reassigned = false
 ) {
   if (!emailThreadingEnabled() || !agent?.email) return null;
 
-  return safeQueue("ticket-assigned", async () => {
+  return safeSend("ticket-assigned", async () => {
     const template = assignmentTemplate(ticket, agent.name, reassigned);
 
-    return enqueueOutbound({
+    return sendOutboundEmail({
       ticket,
       recipient: agent.email,
       ...template,
@@ -140,18 +139,18 @@ export async function queueAssignmentNotification(
   });
 }
 
-export async function queueStatusNotification(ticket) {
+export async function sendStatusNotification(ticket) {
   if (!emailThreadingEnabled()) return null;
 
   if (!["resolved", "closed", "reopened"].includes(ticket.status)) {
     return null;
   }
 
-  return safeQueue(`ticket-${ticket.status}`, async () => {
+  return safeSend(`ticket-${ticket.status}`, async () => {
     const replyTo = await ensureReplyToken(ticket);
     const template = statusTemplate(ticket, ticket.status);
 
-    return enqueueOutbound({
+    return sendOutboundEmail({
       ticket,
       recipient: ticket.requesterEmail,
       ...template,
@@ -161,14 +160,14 @@ export async function queueStatusNotification(ticket) {
   });
 }
 
-export async function queueAgentReply(ticket, messageBody) {
+export async function sendAgentReply(ticket, messageBody) {
   if (!emailThreadingEnabled()) return null;
 
-  return safeQueue("agent-reply", async () => {
+  return safeSend("agent-reply", async () => {
     const replyTo = await ensureReplyToken(ticket);
     const template = replyTemplate(ticket, messageBody);
 
-    return enqueueOutbound({
+    return sendOutboundEmail({
       ticket,
       recipient: ticket.requesterEmail,
       ...template,
@@ -178,7 +177,7 @@ export async function queueAgentReply(ticket, messageBody) {
   });
 }
 
-export async function queueCustomerMessage(ticket, messageBody) {
+export async function sendCustomerMessage(ticket, messageBody) {
   if (!emailThreadingEnabled()) return null;
 
   const agent = ticket.assignedTo
@@ -189,11 +188,11 @@ export async function queueCustomerMessage(ticket, messageBody) {
 
   if (!recipient) return null;
 
-  return safeQueue("customer-message", async () => {
+  return safeSend("customer-message", async () => {
     const replyTo = await ensureReplyToken(ticket);
     const template = customerMessageTemplate(ticket, messageBody);
 
-    return enqueueOutbound({
+    return sendOutboundEmail({
       ticket,
       recipient,
       ...template,
@@ -203,58 +202,34 @@ export async function queueCustomerMessage(ticket, messageBody) {
   });
 }
 
-export async function queueCustomTicketEmail(ticket, { subject, body }) {
+export async function sendCustomTicketEmail(ticket, { subject, body }) {
   if (!emailThreadingEnabled()) return null;
 
-  return safeQueue("ticket-custom", async () => {
-    const replyTo = await ensureReplyToken(ticket);
+  const replyTo = await ensureReplyToken(ticket);
 
-    return enqueueOutbound({
+  return sendOutboundEmail({
+    ticket,
+    recipient: ticket.requesterEmail,
+    subject,
+    html: emailLayout({
+      title: subject,
       ticket,
-      recipient: ticket.requesterEmail,
-      subject,
-      html: emailLayout({
-        title: subject,
-        ticket,
-        content: `<div style="white-space:pre-wrap;background:#f8fafc;padding:16px;border-radius:8px">${String(
-          body
-        )
-          .replace(/[&<>"']/g, (character) => {
-            const entities = {
-              "&": "&amp;",
-              "<": "&lt;",
-              ">": "&gt;",
-              '"': "&quot;",
-              "'": "&#39;",
-            };
-            return entities[character];
-          })}</div>`,
-      }),
-      text: `${body}\n\nTicket: ${ticket.ticketNumber}`,
-      replyTo,
-      kind: "ticket-custom",
-    });
+      content: `<div style="white-space:pre-wrap;background:#f8fafc;padding:16px;border-radius:8px">${String(
+        body
+      )
+        .replace(/[&<>"']/g, (character) => {
+          const entities = {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+          };
+          return entities[character];
+        })}</div>`,
+    }),
+    text: `${body}\n\nTicket: ${ticket.ticketNumber}`,
+    replyTo,
+    kind: "ticket-custom",
   });
-}
-
-export async function queueEmailFromTicketId(ticketId, kind, payload = {}) {
-  const ticket = await Ticket.findById(ticketId);
-
-  if (!ticket) {
-    throw new Error("Ticket not found");
-  }
-
-  if (kind === "ticket-created") {
-    return queueTicketConfirmation(ticket);
-  }
-
-  if (kind === "ticket-status") {
-    return queueStatusNotification(ticket);
-  }
-
-  if (kind === "agent-reply") {
-    return queueAgentReply(ticket, payload.body);
-  }
-
-  throw new Error(`Unsupported email job type: ${kind}`);
 }

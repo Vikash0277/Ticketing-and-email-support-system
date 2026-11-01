@@ -38,13 +38,13 @@ import { formatDateTime, roleLabel } from "../utils/format";
 
 function SessionRow({ session, onRevoke, revoking }) {
   return (
-    <li className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-start gap-3">
+    <li className="flex min-w-0 flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <div className="flex min-w-0 flex-1 items-start gap-3">
         <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
           <Monitor size={17} />
         </span>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-800">
+          <p className="truncate text-sm font-medium text-slate-800">
             {session.deviceName || "Browser session"}
           </p>
           <p className="mt-0.5 truncate text-xs text-slate-500">
@@ -60,6 +60,7 @@ function SessionRow({ session, onRevoke, revoking }) {
       <Button
         size="sm"
         variant="secondary"
+        className="shrink-0 self-start sm:self-auto"
         loading={revoking}
         onClick={() => onRevoke(session.id)}
       >

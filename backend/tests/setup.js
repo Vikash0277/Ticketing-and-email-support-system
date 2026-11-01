@@ -11,7 +11,6 @@ import { afterAll, beforeAll } from "vitest";
 process.env.NODE_ENV = "test";
 process.env.PORT = "3101";
 process.env.MONGODB_URI = "mongodb://127.0.0.1:27017/bitmax_test_placeholder";
-process.env.REDIS_URL = "";
 process.env.JWT_ACCESS_SECRET = "test-access-secret-please-change-1234567890";
 process.env.TOKEN_HASH_SECRET = "test-token-hash-secret-please-change-1234567890";
 process.env.EMAIL_REPLY_TOKEN_SECRET = "test-reply-token-secret-please-change-1234567890";

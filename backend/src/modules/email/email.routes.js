@@ -58,7 +58,7 @@ router.post(
  *     summary: Send a staff email about a ticket
  *     security: [{ bearerAuth: [] }]
  *     responses:
- *       200: { description: Email queued }
+ *       200: { description: Email sent }
  */
 router.post(
   "/outbound",
