@@ -32,7 +32,7 @@ export function makeReplyAddress(token) {
     return null;
   }
 
-  return `reply+${token}@${domain}`;
+  return `reply-${token}@${domain}`;
 }
 
 export function extractReplyToken(recipients = []) {
@@ -42,7 +42,7 @@ export function extractReplyToken(recipients = []) {
     const value = String(recipient || "");
     const match = value.match(/<([^>]+)>/);
     const email = (match?.[1] ?? value).trim().toLowerCase();
-    const tokenMatch = email.match(/^reply\+([a-f0-9]{64})@/i);
+    const tokenMatch = email.match(/^reply[+-]([a-f0-9]{64})@/i);
 
     if (tokenMatch) return tokenMatch[1];
   }

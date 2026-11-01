@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
+import { extractReplyToken } from "../src/modules/email/email-token.js";
 
 let app;
 
@@ -508,6 +509,13 @@ describe("Dashboard", () => {
 });
 
 describe("Email threading", () => {
+  it("extracts reply tokens from provider-compatible addresses", () => {
+    const token = "a".repeat(64);
+
+    expect(extractReplyToken([`reply-${token}@viegoxo.resend.app`])).toBe(token);
+    expect(extractReplyToken([`reply+${token}@viegoxo.resend.app`])).toBe(token);
+  });
+
   it("processes a simulated inbound reply", async () => {
     const response = await authed(
       "post",

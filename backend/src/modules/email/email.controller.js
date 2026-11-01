@@ -87,7 +87,7 @@ export const simulateInbound = asyncHandler(async (req, res) => {
     providerEventId: `simulate:${messageId || Date.now()}`,
     messageId: messageId || `<simulated-${Date.now()}@bitmax.test>`,
     from: from || ticket.requesterEmail,
-    to: replyAddress ? [replyAddress] : [`reply+${token}@localhost`],
+    to: replyAddress ? [replyAddress] : [`reply-${token}@localhost`],
     subject: subject || `Re: [${ticket.ticketNumber}] ${ticket.subject}`,
     text,
     source: "simulator",
