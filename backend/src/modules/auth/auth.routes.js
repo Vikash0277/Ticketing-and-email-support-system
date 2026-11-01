@@ -270,6 +270,23 @@ router.post(
  *       200: { description: Session list }
  */
 router.get("/sessions", authenticate, authController.listSessions);
+
+/**
+ * @openapi
+ * /auth/sessions/{sessionId}:
+ *   delete:
+ *     tags: [Authentication]
+ *     summary: Revoke a single active session
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: Session revoked }
+ *       404: { description: Session not found }
+ */
 router.delete(
   "/sessions/:sessionId",
   authenticate,

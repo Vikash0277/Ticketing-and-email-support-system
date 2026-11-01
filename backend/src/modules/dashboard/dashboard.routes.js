@@ -21,6 +21,16 @@ router.use(authenticate);
  */
 router.get("/summary", getSummary);
 
+/**
+ * @openapi
+ * /dashboard/stats:
+ *   get:
+ *     tags: [Dashboard]
+ *     summary: Backwards-compatible alias of /dashboard/summary
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Dashboard summary }
+ */
 // Backwards-compatible alias used by the original frontend.
 router.get("/stats", getSummary);
 

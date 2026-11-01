@@ -18,7 +18,7 @@ import {
 
 import { clearAuth } from "../../redux/auth/authSlice";
 import { logout as logoutRequest } from "../../api/auth";
-import { getUnreadCount } from "../../api/resources";
+import { fetchUnreadCount } from "../../redux/notifications/notificationsSlice";
 import { roleLabel } from "../../utils/format";
 import { Avatar, cn } from "../ui";
 
@@ -55,10 +55,10 @@ const PORTAL_LABEL = {
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [unread, setUnread] = useState(0);
   const [loggingOut, setLoggingOut] = useState(false);
   const user = useSelector((state) => state.auth.user);
   const refreshToken = useSelector((state) => state.auth.refreshToken);
+  const unread = useSelector((state) => state.notifications.unreadCount);
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -67,25 +67,15 @@ export default function AppLayout() {
   const notificationsPath = `/${role}/notifications`;
 
   useEffect(() => {
-    let active = true;
-
-    async function loadUnread() {
-      try {
-        const result = await getUnreadCount();
-        if (active) setUnread(result?.unreadCount ?? 0);
-      } catch {
-        // The bell is a convenience; ignore transient failures.
-      }
-    }
-
-    loadUnread();
-    const timer = window.setInterval(loadUnread, 60000);
+    dispatch(fetchUnreadCount());
+    const timer = window.setInterval(() => {
+      dispatch(fetchUnreadCount());
+    }, 60000);
 
     return () => {
-      active = false;
       window.clearInterval(timer);
     };
-  }, [user?.id]);
+  }, [dispatch, user?.id]);
 
   const handleLogout = async () => {
     setLoggingOut(true);

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -12,8 +12,7 @@ import {
   Users,
 } from "lucide-react";
 
-import { getDashboardSummary } from "../api/resources";
-import { getErrorMessage } from "../api/client";
+import { fetchDashboardSummary } from "../redux/dashboard/dashboardSlice";
 import {
   Alert,
   Button,
@@ -111,40 +110,62 @@ function RecentTickets({ tickets = [], role }) {
   );
 }
 
+const STATUS_BREAKDOWN = [
+  { key: "open", label: "Open" },
+  { key: "pending", label: "Pending" },
+  { key: "inProgress", label: "In progress" },
+  { key: "resolved", label: "Resolved" },
+  { key: "closed", label: "Closed" },
+  { key: "reopened", label: "Reopened" },
+];
+
+function StatusBreakdown({ summary = {}, role = "customer" }) {
+  return (
+    <Card className="mt-6 overflow-hidden">
+      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">
+            Tickets by status
+          </h2>
+          <p className="text-xs text-slate-500">
+            Where every ticket currently sits in the lifecycle
+          </p>
+        </div>
+        <Link
+          to={`/${role}/tickets`}
+          className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+        >
+          View all
+        </Link>
+      </div>
+
+      <dl className="grid grid-cols-2 divide-x divide-y divide-slate-100 sm:grid-cols-3 lg:grid-cols-6 lg:divide-y-0">
+        {STATUS_BREAKDOWN.map((item) => (
+          <div key={item.key} className="px-4 py-4">
+            <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              {item.label}
+            </dt>
+            <dd className="mt-1 text-2xl font-bold text-slate-900">
+              {summary[item.key] ?? 0}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </Card>
+  );
+}
+
 export default function DashboardPage() {
+  const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
   const role = user?.role ?? "customer";
-  const [data, setData] = useState(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading: loading, error } = useSelector(
+    (state) => state.dashboard
+  );
 
   useEffect(() => {
-    let active = true;
-
-    async function load() {
-      setLoading(true);
-      setError("");
-
-      try {
-        const result = await getDashboardSummary();
-        if (active) setData(result);
-      } catch (requestError) {
-        if (active) {
-          setError(
-            getErrorMessage(requestError, "Unable to load your dashboard")
-          );
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    load();
-
-    return () => {
-      active = false;
-    };
-  }, []);
+    dispatch(fetchDashboardSummary());
+  }, [dispatch]);
 
   const cards = useMemo(() => {
     const summary = data?.summary ?? {};
@@ -205,75 +226,78 @@ export default function DashboardPage() {
         label: "Overdue",
         value: summary.overdue,
         icon: AlertTriangle,
-        tone: "rose",
+        tone: "red",
       },
     ];
 
-    if (role === "admin") {
+    if (role === "admin" && data?.users) {
       staffCards.push({
-        label: "Registered users",
-        value: data?.users?.totalUsers,
+        label: "Customers",
+        value: data.users.customer ?? 0,
         icon: Users,
-        tone: "emerald",
-        hint: `${data?.users?.totalAgents ?? 0} agents · ${
-          data?.users?.totalCustomers ?? 0
-        } customers`,
+        tone: "slate",
+      });
+      staffCards.push({
+        label: "Agents",
+        value: data.users.agent ?? 0,
+        icon: Users,
+        tone: "indigo",
       });
     }
 
     return staffCards;
-  }, [role, data]);
+  }, [data, role]);
 
-  if (loading) return <PageLoader label="Loading dashboard…" />;
-
-  if (error) {
-    return (
-      <div>
-        <PageHeader title="Dashboard" />
-        <Alert>{error}</Alert>
-      </div>
-    );
-  }
+  if (loading && !data) return <PageLoader message="Loading your dashboard…" />;
 
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
-        title={`Welcome back, ${user?.name?.split(" ")[0] || "there"}`}
+        title={
+          role === "customer"
+            ? `Welcome back${user?.name ? `, ${user.name}` : ""}`
+            : "Operational overview"
+        }
         description={
           role === "customer"
-            ? "A quick overview of your support requests."
-            : "Here is what is happening across the support queue."
+            ? "Track the status of your requests and get help from our support team."
+            : "Real-time visibility into the queue, assignments, and SLAs."
         }
-        actions={
-          <>
-            <Link to={`/${role}/tickets/new`}>
-              <Button>
-                <PlusCircle size={16} />
-                New ticket
-              </Button>
-            </Link>
-            <Link to={`/${role}/tickets`}>
-              <Button variant="secondary">View tickets</Button>
-            </Link>
-          </>
+        action={
+          <Link to={`/${role}/tickets/new`}>
+            <Button>
+              <PlusCircle size={17} />
+              New ticket
+            </Button>
+          </Link>
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {error ? <Alert tone="danger">{error}</Alert> : null}
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((card) => (
-          <StatCard key={card.label} {...card} />
+          <StatCard
+            key={card.label}
+            label={card.label}
+            value={card.value}
+            icon={card.icon}
+            tone={card.tone}
+          />
         ))}
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-3">
-        <Card className="overflow-hidden xl:col-span-2">
+      <StatusBreakdown summary={data?.summary} role={role} />
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="overflow-hidden lg:col-span-2">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3.5">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">
                 Recent tickets
               </h2>
               <p className="text-xs text-slate-500">
-                The latest activity in your workspace
+                The latest support requests in your workspace
               </p>
             </div>
             <Link

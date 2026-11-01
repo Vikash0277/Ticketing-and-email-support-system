@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import {
   ArrowLeft,
   CalendarClock,
@@ -21,18 +21,15 @@ import {
 } from "lucide-react";
 
 import {
-  assignTicket,
-  closeTicket,
-  createMessage,
-  getTicket,
-  listActivities,
-  listMessages,
-  reopenTicket,
-  resolveTicket,
-  simulateInboundEmail,
-  updateTicketStatus,
-} from "../api/tickets";
-import { listAgents } from "../api/resources";
+  assignTicketThunk,
+  clearCurrentTicket,
+  createMessageThunk,
+  fetchTicketDetails,
+  simulateInboundEmailThunk,
+  updateTicketStatusThunk,
+  updateTicketThunk,
+} from "../redux/tickets/ticketsSlice";
+import { fetchAgents } from "../redux/users/usersSlice";
 import { downloadFile, getErrorMessage } from "../api/client";
 import {
   Alert,
@@ -184,17 +181,23 @@ function Timeline({ activities }) {
 
 export default function TicketDetailPage() {
   const { ticketId } = useParams();
+  const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
   const role = user?.role ?? "customer";
   const isStaff = STAFF_ROLES.includes(role);
 
-  const [ticket, setTicket] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [activities, setActivities] = useState([]);
-  const [agents, setAgents] = useState([]);
+  const { data: ticket, isLoading: loading, error } = useSelector(
+    (state) => state.tickets.currentTicket
+  );
+  const {
+    messages,
+    activities,
+    isSendingReply: sending,
+    isSimulatingEmail: simulating,
+  } = useSelector((state) => state.tickets.conversations);
+  const agents = useSelector((state) => state.users.agents);
+
   const [tab, setTab] = useState("conversation");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
@@ -202,53 +205,30 @@ export default function TicketDetailPage() {
   const [reply, setReply] = useState("");
   const [replyType, setReplyType] = useState("public");
   const [files, setFiles] = useState([]);
-  const [sending, setSending] = useState(false);
   const fileInputRef = useRef(null);
 
   const [simulatorOpen, setSimulatorOpen] = useState(false);
   const [simulatorText, setSimulatorText] = useState("");
-  const [simulating, setSimulating] = useState(false);
 
   const loadAll = useCallback(
-    async ({ silent = false } = {}) => {
-      if (!silent) setLoading(true);
-
-      try {
-        const [ticketData, messagePage, activityPage] = await Promise.all([
-          getTicket(ticketId),
-          listMessages(ticketId, { limit: 100, sortOrder: "asc" }),
-          listActivities(ticketId, { limit: 100, sortOrder: "asc" }),
-        ]);
-
-        setTicket(ticketData);
-        setMessages(messagePage.items);
-        setActivities(activityPage.items);
-        setError("");
-      } catch (requestError) {
-        setError(
-          getErrorMessage(requestError, "Unable to load this ticket right now")
-        );
-      } finally {
-        if (!silent) setLoading(false);
-      }
+    ({ silent = false } = {}) => {
+      return dispatch(fetchTicketDetails({ ticketId, silent }));
     },
-    [ticketId]
+    [dispatch, ticketId]
   );
 
   useEffect(() => {
-    const timer = window.setTimeout(() => loadAll(), 0);
-    return () => window.clearTimeout(timer);
-  }, [loadAll]);
+    loadAll();
+    return () => {
+      dispatch(clearCurrentTicket());
+    };
+  }, [loadAll, dispatch]);
 
   useEffect(() => {
-    if (!isStaff) return;
-
-    listAgents()
-      .then(setAgents)
-      .catch(() => {
-        // Assignment dropdown is optional if the lookup fails.
-      });
-  }, [isStaff]);
+    if (isStaff) {
+      dispatch(fetchAgents());
+    }
+  }, [dispatch, isStaff]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -266,7 +246,11 @@ export default function TicketDetailPage() {
       setNotice(successMessage);
       await loadAll({ silent: true });
     } catch (requestError) {
-      setActionError(getErrorMessage(requestError, "Action failed"));
+      setActionError(
+        typeof requestError === "string"
+          ? requestError
+          : getErrorMessage(requestError, "Action failed")
+      );
     } finally {
       setBusy("");
     }
@@ -287,15 +271,17 @@ export default function TicketDetailPage() {
 
     if (!reply.trim()) return;
 
-    setSending(true);
     setActionError("");
 
     try {
-      await createMessage(ticketId, {
-        body: reply.trim(),
-        type: replyType,
-        attachments: files,
-      });
+      await dispatch(
+        createMessageThunk({
+          ticketId,
+          body: reply.trim(),
+          type: replyType,
+          attachments: files,
+        })
+      ).unwrap();
 
       setReply("");
       setReplyType("public");
@@ -304,9 +290,11 @@ export default function TicketDetailPage() {
       setNotice("Reply added");
       await loadAll({ silent: true });
     } catch (requestError) {
-      setActionError(getErrorMessage(requestError, "Unable to send the reply"));
-    } finally {
-      setSending(false);
+      setActionError(
+        typeof requestError === "string"
+          ? requestError
+          : getErrorMessage(requestError, "Unable to send the reply")
+      );
     }
   };
 
@@ -315,15 +303,16 @@ export default function TicketDetailPage() {
 
     if (!simulatorText.trim()) return;
 
-    setSimulating(true);
     setActionError("");
 
     try {
-      await simulateInboundEmail({
-        ticketId,
-        from: ticket?.requesterEmail,
-        text: simulatorText.trim(),
-      });
+      await dispatch(
+        simulateInboundEmailThunk({
+          ticketId,
+          from: ticket?.requesterEmail,
+          text: simulatorText.trim(),
+        })
+      ).unwrap();
 
       setSimulatorOpen(false);
       setSimulatorText("");
@@ -331,10 +320,10 @@ export default function TicketDetailPage() {
       await loadAll({ silent: true });
     } catch (requestError) {
       setActionError(
-        getErrorMessage(requestError, "Unable to simulate the email")
+        typeof requestError === "string"
+          ? requestError
+          : getErrorMessage(requestError, "Unable to simulate the email")
       );
-    } finally {
-      setSimulating(false);
     }
   };
 
@@ -350,9 +339,17 @@ export default function TicketDetailPage() {
       list.push({
         key: "in_progress",
         label: "Start progress",
+        successMessage: "Ticket moved to in progress",
         icon: PlayCircle,
         variant: "primary",
-        run: () => updateTicketStatus(ticketId, { status: "in_progress" }),
+        run: () =>
+          dispatch(
+            updateTicketStatusThunk({
+              ticketId,
+              status: "in_progress",
+              actionType: "status",
+            })
+          ).unwrap(),
       });
     }
 
@@ -360,9 +357,17 @@ export default function TicketDetailPage() {
       list.push({
         key: "pending",
         label: "Mark pending",
+        successMessage: "Ticket marked pending",
         icon: Timer,
         variant: "warning",
-        run: () => updateTicketStatus(ticketId, { status: "pending" }),
+        run: () =>
+          dispatch(
+            updateTicketStatusThunk({
+              ticketId,
+              status: "pending",
+              actionType: "status",
+            })
+          ).unwrap(),
       });
     }
 
@@ -370,9 +375,16 @@ export default function TicketDetailPage() {
       list.push({
         key: "resolved",
         label: "Resolve",
+        successMessage: "Ticket resolved",
         icon: CheckCircle2,
         variant: "success",
-        run: () => resolveTicket(ticketId),
+        run: () =>
+          dispatch(
+            updateTicketStatusThunk({
+              ticketId,
+              actionType: "resolve",
+            })
+          ).unwrap(),
       });
     }
 
@@ -380,9 +392,33 @@ export default function TicketDetailPage() {
       list.push({
         key: "closed",
         label: "Close",
+        successMessage: "Ticket closed",
         icon: XCircle,
         variant: "secondary",
-        run: () => closeTicket(ticketId),
+        run: () =>
+          dispatch(
+            updateTicketStatusThunk({
+              ticketId,
+              actionType: "close",
+            })
+          ).unwrap(),
+      });
+    }
+
+    if (!isStaff && status !== "closed") {
+      list.push({
+        key: "closed",
+        label: "Close ticket",
+        successMessage: "Ticket closed",
+        icon: XCircle,
+        variant: "secondary",
+        run: () =>
+          dispatch(
+            updateTicketStatusThunk({
+              ticketId,
+              actionType: "close",
+            })
+          ).unwrap(),
       });
     }
 
@@ -390,16 +426,23 @@ export default function TicketDetailPage() {
       list.push({
         key: "reopened",
         label: "Reopen",
+        successMessage: "Ticket reopened",
         icon: RotateCcw,
         variant: "danger",
-        run: () => reopenTicket(ticketId),
+        run: () =>
+          dispatch(
+            updateTicketStatusThunk({
+              ticketId,
+              actionType: "reopen",
+            })
+          ).unwrap(),
       });
     }
 
     return list;
-  }, [ticket, isStaff, status, ticketId]);
+  }, [ticket, isStaff, status, ticketId, dispatch]);
 
-  if (loading) return <PageLoader label="Loading ticket…" />;
+  if (loading && !ticket) return <PageLoader message="Loading ticket…" />;
 
   if (error) {
     return (
@@ -433,10 +476,22 @@ export default function TicketDetailPage() {
         Back to tickets
       </Link>
 
-      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <div className="mb-1.5 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+      {notice ? (
+        <Alert tone="success" className="mb-4">
+          {notice}
+        </Alert>
+      ) : null}
+
+      {actionError ? (
+        <Alert tone="danger" className="mb-4">
+          {actionError}
+        </Alert>
+      ) : null}
+
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-xs font-semibold text-slate-500">
               {ticket.ticketNumber}
             </span>
             <StatusBadge status={ticket.status} />
@@ -447,85 +502,121 @@ export default function TicketDetailPage() {
               </Badge>
             ) : null}
           </div>
-
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="mt-2 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
             {ticket.subject}
           </h1>
-
-          <p className="mt-1.5 text-sm text-slate-500">
-            Opened by {requesterName} · {formatDateTime(ticket.createdAt)}
+          <p className="mt-1 text-xs text-slate-500">
+            Created by{" "}
+            <span className="font-medium text-slate-700">{requesterName}</span> ·{" "}
+            {formatDateTime(ticket.createdAt)}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {actions.map((action) => (
-            <Button
-              key={action.key}
-              variant={action.variant}
-              size="sm"
-              loading={busy === action.key}
-              disabled={Boolean(busy)}
-              onClick={() =>
-                runAction(
-                  action.key,
-                  action.run,
-                  `Ticket marked ${action.label.toLowerCase()}`
-                )
-              }
-            >
-              <action.icon size={15} />
-              {action.label}
-            </Button>
-          ))}
-        </div>
+        {actions.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {actions.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Button
+                  key={item.key}
+                  variant={item.variant}
+                  size="sm"
+                  loading={busy === item.key}
+                  disabled={Boolean(busy)}
+                  onClick={() =>
+                    runAction(item.key, item.run, item.successMessage)
+                  }
+                >
+                  <Icon size={15} />
+                  {item.label}
+                </Button>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
 
-      {actionError ? <Alert className="mb-4">{actionError}</Alert> : null}
-      {notice ? (
-        <Alert tone="success" className="mb-4">
-          {notice}
-        </Alert>
-      ) : null}
+      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          <Card className="p-5">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              Initial issue
+            </h2>
+            <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-800">
+              {ticket.description}
+            </p>
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <div className="space-y-5 xl:col-span-2">
+            {ticket.attachments?.length ? (
+              <div className="mt-4 border-t border-slate-100 pt-3">
+                <p className="mb-2 text-xs font-medium text-slate-500">
+                  Ticket attachments
+                </p>
+                <ul className="flex flex-wrap gap-2">
+                  {ticket.attachments.map((attachment) => (
+                    <li key={attachment._id}>
+                      <button
+                        type="button"
+                        onClick={() => handleDownload(attachment)}
+                        className="inline-flex max-w-full items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700"
+                      >
+                        <Paperclip size={13} />
+                        <span className="truncate">{attachment.filename}</span>
+                        <span className="text-slate-400">
+                          {formatBytes(attachment.size)}
+                        </span>
+                        <Download size={13} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </Card>
+
           <Card className="overflow-hidden">
-            <div className="flex items-center gap-1 border-b border-slate-100 px-3">
+            <div className="flex border-b border-slate-100">
               <button
                 type="button"
                 onClick={() => setTab("conversation")}
                 className={cn(
-                  "inline-flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-semibold transition",
+                  "flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition",
                   tab === "conversation"
-                    ? "border-indigo-600 text-indigo-700"
+                    ? "border-indigo-600 text-indigo-600"
                     : "border-transparent text-slate-500 hover:text-slate-800"
                 )}
               >
                 <MessageSquare size={16} />
-                Conversation ({messages.length})
+                Conversation
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-normal text-slate-600">
+                  {messages.length}
+                </span>
               </button>
+
               <button
                 type="button"
                 onClick={() => setTab("timeline")}
                 className={cn(
-                  "inline-flex items-center gap-2 border-b-2 px-3 py-3 text-sm font-semibold transition",
+                  "flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition",
                   tab === "timeline"
-                    ? "border-indigo-600 text-indigo-700"
+                    ? "border-indigo-600 text-indigo-600"
                     : "border-transparent text-slate-500 hover:text-slate-800"
                 )}
               >
                 <CircleDot size={16} />
-                Timeline ({activities.length})
+                Audit timeline
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-normal text-slate-600">
+                  {activities.length}
+                </span>
               </button>
             </div>
 
-            <div className="p-4 sm:p-5">
+            <div className="p-5">
               {tab === "conversation" ? (
                 messages.length === 0 ? (
                   <EmptyState
                     icon={Inbox}
                     title="No messages yet"
-                    description="Start the conversation below."
+                    description="When replies are sent by email or within this portal, they will appear here in threaded order."
                   />
                 ) : (
                   <div className="space-y-4">
@@ -584,19 +675,18 @@ export default function TicketDetailPage() {
                         ref={fileInputRef}
                         type="file"
                         multiple
+                        onChange={(event) => {
+                          const selected = Array.from(event.target.files ?? []);
+                          setFiles((prev) => [...prev, ...selected].slice(0, 5));
+                        }}
                         className="hidden"
-                        onChange={(event) =>
-                          setFiles(
-                            Array.from(event.target.files ?? []).slice(0, 5)
-                          )
-                        }
                         accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.zip"
                       />
                     </label>
 
-                    {files.length ? (
+                    {files.length > 0 ? (
                       <span className="text-xs text-slate-500">
-                        {files.length} file{files.length === 1 ? "" : "s"} ready
+                        {files.length} file{files.length > 1 ? "s" : ""} selected
                       </span>
                     ) : null}
                   </div>
@@ -606,80 +696,88 @@ export default function TicketDetailPage() {
                     loading={sending}
                     disabled={sending || !reply.trim()}
                   >
-                    <Send size={16} />
-                    Send
+                    <Send size={15} />
+                    {sending ? "Sending…" : "Send reply"}
                   </Button>
                 </div>
+
+                {files.length > 0 ? (
+                  <ul className="flex flex-wrap gap-2 pt-1">
+                    {files.map((file, index) => (
+                      <li
+                        key={`${file.name}-${index}`}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700"
+                      >
+                        <span className="max-w-xs truncate">{file.name}</span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFiles((prev) =>
+                              prev.filter((_, idx) => idx !== index)
+                            )
+                          }
+                          className="text-slate-400 hover:text-red-600"
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </form>
             ) : (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                This ticket is {status}. Reopen it before adding a staff reply.
-              </div>
+              <p className="text-sm text-slate-500">
+                This ticket is {ticket.status}. Reopen the ticket to add new
+                replies.
+              </p>
             )}
           </Card>
         </div>
 
-        <div className="space-y-5">
+        <div className="space-y-6">
           <Card className="p-5">
-            <h2 className="mb-4 text-sm font-semibold text-slate-900">
+            <h2 className="mb-3 text-sm font-semibold text-slate-900">
               Ticket details
             </h2>
 
             <dl className="space-y-3 text-sm">
-              <div className="flex items-start justify-between gap-3">
-                <dt className="text-slate-500">Requester</dt>
-                <dd className="text-right">
-                  <p className="font-medium text-slate-800">{requesterName}</p>
-                  <p className="text-xs text-slate-500">{requesterEmail}</p>
-                </dd>
-              </div>
-
-              <div className="flex items-start justify-between gap-3">
-                <dt className="text-slate-500">Assignee</dt>
-                <dd className="text-right font-medium text-slate-800">
-                  {ticket.assignedTo?.name || "Unassigned"}
-                </dd>
-              </div>
-
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center justify-between">
                 <dt className="text-slate-500">Category</dt>
-                <dd className="text-right font-medium text-slate-800">
-                  {ticket.categoryId?.name || "—"}
+                <dd className="font-medium text-slate-800">
+                  {ticket.categoryId?.name || "General"}
                 </dd>
               </div>
 
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center justify-between">
+                <dt className="text-slate-500">Status</dt>
+                <dd>
+                  <StatusBadge status={ticket.status} />
+                </dd>
+              </div>
+
+              <div className="flex items-center justify-between">
                 <dt className="text-slate-500">Priority</dt>
                 <dd>
                   <PriorityBadge priority={ticket.priority} />
                 </dd>
               </div>
 
-              <div className="flex items-start justify-between gap-3">
-                <dt className="text-slate-500">Created</dt>
-                <dd className="text-right text-slate-700">
-                  {formatDateTime(ticket.createdAt)}
+              <div className="flex items-center justify-between">
+                <dt className="text-slate-500">Source</dt>
+                <dd className="capitalize text-slate-800">
+                  {ticket.source || "portal"}
                 </dd>
               </div>
 
-              <div className="flex items-start justify-between gap-3">
-                <dt className="text-slate-500">Last activity</dt>
-                <dd className="text-right text-slate-700">
-                  {formatRelative(ticket.lastMessageAt || ticket.updatedAt)}
-                </dd>
-              </div>
-
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center justify-between border-t border-slate-100 pt-3">
                 <dt className="flex items-center gap-1.5 text-slate-500">
                   <CalendarClock size={14} />
-                  Due
+                  Due by
                 </dt>
                 <dd
                   className={cn(
-                    "text-right",
-                    ticket.isOverdue
-                      ? "font-semibold text-red-600"
-                      : "text-slate-700"
+                    "text-xs font-medium",
+                    ticket.isOverdue ? "font-bold text-red-600" : "text-slate-700"
                   )}
                 >
                   {formatDateTime(ticket.dueAt)}
@@ -714,7 +812,13 @@ export default function TicketDetailPage() {
                   onChange={(event) =>
                     runAction(
                       "assign",
-                      () => assignTicket(ticketId, event.target.value || null),
+                      () =>
+                        dispatch(
+                          assignTicketThunk({
+                            ticketId,
+                            assignedTo: event.target.value || null,
+                          })
+                        ).unwrap(),
                       event.target.value
                         ? "Ticket assigned"
                         : "Ticket unassigned"
@@ -733,6 +837,39 @@ export default function TicketDetailPage() {
               </Field>
 
               {busy === "assign" ? (
+                <p className="mt-2 text-xs text-slate-500">Updating…</p>
+              ) : null}
+
+              <div className="mt-3">
+                <Field label="Priority" htmlFor="ticket-priority">
+                  <select
+                    id="ticket-priority"
+                    value={ticket.priority}
+                    onChange={(event) =>
+                      runAction(
+                        "priority",
+                        () =>
+                          dispatch(
+                            updateTicketThunk({
+                              ticketId,
+                              payload: { priority: event.target.value },
+                            })
+                          ).unwrap(),
+                        "Priority updated"
+                      )
+                    }
+                    disabled={Boolean(busy)}
+                    className={inputClass}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </Field>
+              </div>
+
+              {busy === "priority" ? (
                 <p className="mt-2 text-xs text-slate-500">Updating…</p>
               ) : null}
             </Card>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import {
   CheckCircle2,
   Pencil,
@@ -12,13 +13,12 @@ import {
 } from "lucide-react";
 
 import {
-  createUser,
-  deleteUser,
-  getUserStats,
-  listUsers,
-  updateUser,
-  updateUserStatus,
-} from "../api/resources";
+  createUserThunk,
+  fetchUsers,
+  fetchUserStats,
+  updateUserStatusThunk,
+  updateUserThunk,
+} from "../redux/users/usersSlice";
 import { getErrorMessage, getFieldErrors } from "../api/client";
 import {
   Alert,
@@ -64,10 +64,15 @@ function RoleBadge({ role }) {
 }
 
 export default function UserManagementPage() {
-  const [users, setUsers] = useState([]);
-  const [pagination, setPagination] = useState(null);
-  const [stats, setStats] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useDispatch();
+  const {
+    items: users,
+    pagination,
+    stats,
+    isLoading: loading,
+    error: reduxError,
+  } = useSelector((state) => state.users);
+
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -93,43 +98,34 @@ export default function UserManagementPage() {
     return () => window.clearTimeout(timer);
   }, [searchInput]);
 
-  const loadStats = useCallback(async () => {
-    try {
-      setStats(await getUserStats());
-    } catch {
-      // Stats are informational only.
-    }
-  }, []);
+  const loadStats = useCallback(() => {
+    return dispatch(fetchUserStats());
+  }, [dispatch]);
 
-  const loadUsers = useCallback(async () => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const result = await listUsers({
+  const loadUsers = useCallback(() => {
+    return dispatch(
+      fetchUsers({
         page,
         limit: 15,
         search,
         role,
         isActive: status,
-      });
-
-      setUsers(result.items);
-      setPagination(result.pagination);
-    } catch (requestError) {
-      setError(getErrorMessage(requestError, "Unable to load users right now"));
-    } finally {
-      setLoading(false);
-    }
-  }, [page, search, role, status]);
+      })
+    );
+  }, [dispatch, page, search, role, status]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => loadUsers(), 0);
+    const timer = window.setTimeout(() => {
+      setError("");
+      loadUsers();
+    }, 0);
     return () => window.clearTimeout(timer);
   }, [loadUsers]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => loadStats(), 0);
+    const timer = window.setTimeout(() => {
+      loadStats();
+    }, 0);
     return () => window.clearTimeout(timer);
   }, [loadStats]);
 
@@ -180,31 +176,43 @@ export default function UserManagementPage() {
 
     try {
       if (modal.mode === "create") {
-        await createUser({
-          name: form.name.trim(),
-          email: form.email.trim().toLowerCase(),
-          password: form.password,
-          phone: form.phone.trim(),
-          jobTitle: form.jobTitle.trim(),
-          role: form.role,
-        });
+        await dispatch(
+          createUserThunk({
+            name: form.name.trim(),
+            email: form.email.trim().toLowerCase(),
+            password: form.password,
+            phone: form.phone.trim(),
+            jobTitle: form.jobTitle.trim(),
+            role: form.role,
+          })
+        ).unwrap();
         setNotice("User created");
       } else {
-        await updateUser(modal.user._id, {
-          name: form.name.trim(),
-          email: form.email.trim().toLowerCase(),
-          phone: form.phone.trim(),
-          jobTitle: form.jobTitle.trim(),
-          role: form.role,
-        });
+        await dispatch(
+          updateUserThunk({
+            userId: modal.user._id,
+            payload: {
+              name: form.name.trim(),
+              email: form.email.trim().toLowerCase(),
+              phone: form.phone.trim(),
+              jobTitle: form.jobTitle.trim(),
+              role: form.role,
+            },
+          })
+        ).unwrap();
         setNotice("User updated");
       }
 
       setModal({ open: false, mode: "create", user: null });
-      await Promise.all([loadUsers(), loadStats()]);
+      loadUsers();
+      loadStats();
     } catch (requestError) {
       setFieldErrors(getFieldErrors(requestError));
-      setFormError(getErrorMessage(requestError, "Unable to save this user"));
+      setFormError(
+        typeof requestError === "string"
+          ? requestError
+          : getErrorMessage(requestError, "Unable to save this user")
+      );
     } finally {
       setSaving(false);
     }
@@ -215,36 +223,21 @@ export default function UserManagementPage() {
     setError("");
 
     try {
-      await updateUserStatus(user._id, !user.isActive);
+      await dispatch(
+        updateUserStatusThunk({
+          userId: user._id,
+          isActive: !user.isActive,
+        })
+      ).unwrap();
       setNotice(user.isActive ? "User deactivated" : "User activated");
-      await Promise.all([loadUsers(), loadStats()]);
+      loadUsers();
+      loadStats();
     } catch (requestError) {
       setError(
-        getErrorMessage(requestError, "Unable to update the user status")
+        typeof requestError === "string"
+          ? requestError
+          : getErrorMessage(requestError, "Unable to update the user status")
       );
-    } finally {
-      setBusyId("");
-    }
-  };
-
-  const handleDelete = async (user) => {
-    if (
-      !window.confirm(
-        `Deactivate ${user.name}? They will no longer be able to sign in.`
-      )
-    ) {
-      return;
-    }
-
-    setBusyId(user._id);
-    setError("");
-
-    try {
-      await deleteUser(user._id);
-      setNotice("User deactivated");
-      await Promise.all([loadUsers(), loadStats()]);
-    } catch (requestError) {
-      setError(getErrorMessage(requestError, "Unable to deactivate this user"));
     } finally {
       setBusyId("");
     }
@@ -281,6 +274,7 @@ export default function UserManagementPage() {
   );
 
   const activeFilters = [role, status].filter(Boolean).length;
+  const displayError = error || reduxError;
 
   return (
     <div>
@@ -300,7 +294,7 @@ export default function UserManagementPage() {
           {notice}
         </Alert>
       ) : null}
-      {error ? <Alert className="mb-4">{error}</Alert> : null}
+      {displayError ? <Alert className="mb-4">{displayError}</Alert> : null}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {statCards.map((card) => (
@@ -491,19 +485,6 @@ export default function UserManagementPage() {
                               </>
                             )}
                           </Button>
-
-                          {user.isActive ? (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                              disabled={Boolean(busyId)}
-                              onClick={() => handleDelete(user)}
-                            >
-                              <XCircle size={14} />
-                              Deactivate
-                            </Button>
-                          ) : null}
                         </div>
                       </td>
                     </tr>

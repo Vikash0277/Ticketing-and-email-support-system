@@ -1,0 +1,986 @@
+{
+  "info": {
+    "_postman_id": "b1a7c6d4-6f2e-4f6a-9c1e-bitmax000001",
+    "name": "BitMax Ticketing API",
+    "description": "End-to-end collection for the BitMax MERN ticketing assignment.\n\n1. Import `BitMax-Ticketing.postman_environment.json`.\n2. Run **Auth → Login (password)**; the access and refresh tokens are saved automatically.\n3. Run **Categories → List categories** (saves `categoryId`).\n4. Run **Tickets → Create ticket** (saves `ticketId`).\n5. Continue through Messages, Activity, Dashboard and Email.\n\nSeed accounts (password `Password123!`):\n- admin@bitmax.test\n- agent@bitmax.test\n- customer@bitmax.test\n\nAll endpoints exist under both `/api/v1` and `/api`; the environment uses `/api/v1`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "ticketId", "value": "" },
+    { "key": "categoryId", "value": "" },
+    { "key": "messageId", "value": "" },
+    { "key": "activityId", "value": "" },
+    { "key": "userId", "value": "" },
+    { "key": "agentId", "value": "" },
+    { "key": "notificationId", "value": "" },
+    { "key": "sessionId", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Liveness",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "description": "Returns 200 while the API process is running."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["pm.test('alive', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Readiness",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health/ready", "host": ["{{baseUrl}}"], "path": ["health", "ready"] },
+            "description": "Checks the MongoDB connection."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register customer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"email\": \"jane.customer@example.com\",\n  \"password\": \"Password123!\",\n  \"phone\": \"+919876543210\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] }
+          }
+        },
+        {
+          "name": "Verify registration OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane.customer@example.com\",\n  \"otp\": \"123456\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/verify-otp", "host": ["{{baseUrl}}"], "path": ["auth", "verify-otp"] }
+          }
+        },
+        {
+          "name": "Resend registration OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane.customer@example.com\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/resend-otp", "host": ["{{baseUrl}}"], "path": ["auth", "resend-otp"] }
+          }
+        },
+        {
+          "name": "Login (password)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customerEmail}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login-password", "host": ["{{baseUrl}}"], "path": ["auth", "login-password"] },
+            "description": "Saves accessToken, refreshToken and the current user id. Change customerEmail to adminEmail or agentEmail to test other roles."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('login ok', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('accessToken', body.data.accessToken);",
+                  "pm.collectionVariables.set('refreshToken', body.data.refreshToken);",
+                  "pm.collectionVariables.set('userId', body.data.user.id || body.data.user._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Request login OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customerEmail}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/login-otp", "host": ["{{baseUrl}}"], "path": ["auth", "login-otp"] }
+          }
+        },
+        {
+          "name": "Verify login OTP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customerEmail}}\",\n  \"otp\": \"123456\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/verify-login-otp", "host": ["{{baseUrl}}"], "path": ["auth", "verify-login-otp"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?.accessToken) pm.collectionVariables.set('accessToken', body.data.accessToken);",
+                  "if (body.data?.refreshToken) pm.collectionVariables.set('refreshToken', body.data.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/refresh-token", "host": ["{{baseUrl}}"], "path": ["auth", "refresh-token"] },
+            "description": "Rotates the refresh token. Reusing the old token returns 401."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?.accessToken) pm.collectionVariables.set('accessToken', body.data.accessToken);",
+                  "if (body.data?.refreshToken) pm.collectionVariables.set('refreshToken', body.data.refreshToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] }
+          }
+        },
+        {
+          "name": "Update me",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jane Customer\",\n  \"jobTitle\": \"QA Engineer\",\n  \"phone\": \"+919876543210\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] }
+          }
+        },
+        {
+          "name": "Change password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{password}}\",\n  \"newPassword\": \"NewPassword123!\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/change-password", "host": ["{{baseUrl}}"], "path": ["auth", "change-password"] }
+          }
+        },
+        {
+          "name": "List sessions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/sessions", "host": ["{{baseUrl}}"], "path": ["auth", "sessions"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?.[0]?._id) pm.collectionVariables.set('sessionId', body.data[0]._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Revoke session",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/sessions/{{sessionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "sessions", "{{sessionId}}"]
+            }
+          }
+        },
+        {
+          "name": "Forgot password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customerEmail}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/forgot-password", "host": ["{{baseUrl}}"], "path": ["auth", "forgot-password"] }
+          }
+        },
+        {
+          "name": "Reset password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"<token-from-email>\",\n  \"password\": \"NewPassword123!\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/reset-password", "host": ["{{baseUrl}}"], "path": ["auth", "reset-password"] }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth", "logout"] }
+          }
+        },
+        {
+          "name": "Logout all devices",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/auth/logout-all", "host": ["{{baseUrl}}"], "path": ["auth", "logout-all"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Categories",
+      "item": [
+        {
+          "name": "List categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?.[0]?._id) pm.collectionVariables.set('categoryId', body.data[0]._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create category (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Feature request\",\n  \"description\": \"Product ideas and enhancements\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/categories", "host": ["{{baseUrl}}"], "path": ["categories"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?._id) pm.collectionVariables.set('categoryId', body.data._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get category",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories", "{{categoryId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update category (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated description\",\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories", "{{categoryId}}"]
+            }
+          }
+        },
+        {
+          "name": "Deactivate category (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/categories/{{categoryId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories", "{{categoryId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tickets",
+      "item": [
+        {
+          "name": "Create ticket",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Cannot sign in after password reset\",\n  \"description\": \"I reset my password but still receive an error when signing in.\",\n  \"categoryId\": \"{{categoryId}}\",\n  \"priority\": \"high\",\n  \"tags\": [\"login\", \"auth\"]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/tickets", "host": ["{{baseUrl}}"], "path": ["tickets"] },
+            "description": "Also accepts multipart/form-data with an `attachments` field (max 5 files, 10 MB each)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "if (body.data?._id) pm.collectionVariables.set('ticketId', body.data._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create ticket with attachment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "subject", "value": "Screenshot attached", "type": "text" },
+                { "key": "description", "value": "The error is shown in the attached screenshot.", "type": "text" },
+                { "key": "categoryId", "value": "{{categoryId}}", "type": "text" },
+                { "key": "priority", "value": "medium", "type": "text" },
+                { "key": "attachments", "type": "file", "src": "" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/tickets", "host": ["{{baseUrl}}"], "path": ["tickets"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?._id) pm.collectionVariables.set('ticketId', body.data._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List tickets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets?page=1&limit=20&view=all&sortBy=updatedAt&sortOrder=desc",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "view", "value": "all" },
+                { "key": "sortBy", "value": "updatedAt" },
+                { "key": "sortOrder", "value": "desc" }
+              ]
+            },
+            "description": "Optional filters: status, priority, categoryId, assignedTo, requesterId, search, tags, dateFrom, dateTo, view (all|mine|unassigned|overdue)."
+          }
+        },
+        {
+          "name": "Ticket stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/tickets/stats", "host": ["{{baseUrl}}"], "path": ["tickets", "stats"] }
+          }
+        },
+        {
+          "name": "Get ticket",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update ticket",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priority\": \"urgent\",\n  \"tags\": [\"login\", \"escalated\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}"]
+            },
+            "description": "Customers may update subject, description and tags; staff may also change category and priority."
+          }
+        },
+        {
+          "name": "Assign ticket",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assignedTo\": \"{{agentId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/assign",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}", "assign"]
+            },
+            "description": "Run Users → List agents first to populate agentId. Send null to unassign."
+          }
+        },
+        {
+          "name": "Change status",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"pending\",\n  \"note\": \"Waiting for the customer to confirm the reset email.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}", "status"]
+            },
+            "description": "Valid statuses: open, in_progress, pending, resolved, closed, reopened. Invalid transitions return 400."
+          }
+        },
+        {
+          "name": "Resolve ticket",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"note\": \"Password reset completed and verified.\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/resolve",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}", "resolve"]
+            }
+          }
+        },
+        {
+          "name": "Reopen ticket",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"note\": \"The issue returned after a day.\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/reopen",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}", "reopen"]
+            }
+          }
+        },
+        {
+          "name": "Close ticket",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"note\": \"Confirmed with the customer.\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/close",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}", "close"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Messages",
+      "item": [
+        {
+          "name": "Add public reply",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"We are investigating this now and will update you shortly.\",\n  \"type\": \"public\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}", "messages"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?._id) pm.collectionVariables.set('messageId', body.data._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add internal note (staff)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Internal: the customer's account was locked by the rate limiter.\",\n  \"type\": \"internal\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}", "messages"]
+            }
+          }
+        },
+        {
+          "name": "List messages",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/messages?page=1&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}", "messages"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "50" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?.[0]?._id) pm.collectionVariables.set('messageId', body.data[0]._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get message",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/messages/{{messageId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}", "messages", "{{messageId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Activity",
+      "item": [
+        {
+          "name": "List activities",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/activities?page=1&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}", "activities"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "50" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?.[0]?._id) pm.collectionVariables.set('activityId', body.data[0]._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get activity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/activities/{{activityId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["tickets", "{{ticketId}}", "activities", "{{activityId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "List notifications",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?.[0]?._id) pm.collectionVariables.set('notificationId', body.data[0]._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unread count",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/unread-count",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "unread-count"]
+            }
+          }
+        },
+        {
+          "name": "Mark notification read",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/{{notificationId}}/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "{{notificationId}}", "read"]
+            }
+          }
+        },
+        {
+          "name": "Mark all read",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/notifications/read-all", "host": ["{{baseUrl}}"], "path": ["notifications", "read-all"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "List users (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["users"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?.[0]?._id) pm.collectionVariables.set('userId', body.data[0]._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List agents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/users/agents", "host": ["{{baseUrl}}"], "path": ["users", "agents"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?.[0]?._id) pm.collectionVariables.set('agentId', body.data[0]._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "User stats (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/users/stats", "host": ["{{baseUrl}}"], "path": ["users", "stats"] }
+          }
+        },
+        {
+          "name": "Create user (admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"New Agent\",\n  \"email\": \"new.agent@bitmax.test\",\n  \"password\": \"Password123!\",\n  \"role\": \"agent\",\n  \"jobTitle\": \"Support Engineer\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "if (body.data?._id) pm.collectionVariables.set('userId', body.data._id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["users", "{{userId}}"] }
+          }
+        },
+        {
+          "name": "Update user (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Name\",\n  \"jobTitle\": \"Senior Support Engineer\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["users", "{{userId}}"] }
+          }
+        },
+        {
+          "name": "Change role (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"role\": \"agent\"\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/role",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "role"]
+            }
+          }
+        },
+        {
+          "name": "Change status (admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"isActive\": true\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "status"]
+            }
+          }
+        },
+        {
+          "name": "Deactivate user (admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/users/{{userId}}", "host": ["{{baseUrl}}"], "path": ["users", "{{userId}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/dashboard/summary",
+              "host": ["{{baseUrl}}"],
+              "path": ["dashboard", "summary"]
+            },
+            "description": "Role-aware counts, a 14-day trend and recent tickets. Admins also receive user totals."
+          }
+        },
+        {
+          "name": "Summary (legacy alias)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/dashboard/stats", "host": ["{{baseUrl}}"], "path": ["dashboard", "stats"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Email",
+      "item": [
+        {
+          "name": "Simulate inbound reply (dev)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticketId\": \"{{ticketId}}\",\n  \"from\": \"{{customerEmail}}\",\n  \"subject\": \"Re: Cannot sign in\",\n  \"text\": \"The problem came back after the reset.\",\n  \"messageId\": \"<manual-test-1@bitmax.test>\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/email/inbound/simulate",
+              "host": ["{{baseUrl}}"],
+              "path": ["email", "inbound", "simulate"]
+            },
+            "description": "Staff only and disabled in production. Behaves exactly like a real inbound Resend reply: adds a customer message and reopens the ticket when needed."
+          }
+        },
+        {
+          "name": "Send outbound email",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticketId\": \"{{ticketId}}\",\n  \"subject\": \"Update on your ticket\",\n  \"body\": \"We have reset your account and you should be able to sign in now.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/email/outbound", "host": ["{{baseUrl}}"], "path": ["email", "outbound"] },
+            "description": "Queues an email through BullMQ. Falls back to inline delivery when Redis is unavailable."
+          }
+        },
+        {
+          "name": "List email events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/email/events?ticketId={{ticketId}}&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["email", "events"],
+              "query": [
+                { "key": "ticketId", "value": "{{ticketId}}" },
+                { "key": "limit", "value": "50" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

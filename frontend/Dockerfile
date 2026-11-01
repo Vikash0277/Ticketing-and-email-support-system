@@ -6,6 +6,11 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
+
+# Relative /api/v1 by default so nginx can proxy requests to the backend.
+ARG VITE_API_URL=/api/v1
+ENV VITE_API_URL=$VITE_API_URL
+
 RUN npm run build
 
 FROM nginx:alpine

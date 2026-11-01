@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import {
   Bell,
   BellOff,
@@ -10,11 +10,11 @@ import {
 } from "lucide-react";
 
 import {
-  getUnreadCount,
-  listNotifications,
-  markAllNotificationsRead,
-  markNotificationRead,
-} from "../api/resources";
+  fetchNotifications,
+  fetchUnreadCount,
+  markAllNotificationsReadThunk,
+  markNotificationReadThunk,
+} from "../redux/notifications/notificationsSlice";
 import { getErrorMessage } from "../api/client";
 import {
   Alert,
@@ -39,47 +39,40 @@ const TYPE_LABEL = {
 };
 
 export default function NotificationsPage() {
+  const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
   const role = user?.role ?? "customer";
 
-  const [notifications, setNotifications] = useState([]);
-  const [pagination, setPagination] = useState(null);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const {
+    items: notifications,
+    pagination,
+    unreadCount,
+    isLoading: loading,
+    error: reduxError,
+  } = useSelector((state) => state.notifications);
+
   const [page, setPage] = useState(1);
   const [unreadOnly, setUnreadOnly] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
   const [markingAll, setMarkingAll] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const [result, unread] = await Promise.all([
-        listNotifications({
-          page,
-          limit: 20,
-          unreadOnly: unreadOnly ? "true" : "",
-        }),
-        getUnreadCount(),
-      ]);
-
-      setNotifications(result.items);
-      setPagination(result.pagination);
-      setUnreadCount(unread?.unreadCount ?? 0);
-    } catch (requestError) {
-      setError(
-        getErrorMessage(requestError, "Unable to load notifications right now")
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [page, unreadOnly]);
+  const load = useCallback(() => {
+    dispatch(
+      fetchNotifications({
+        page,
+        limit: 20,
+        unreadOnly: unreadOnly ? "true" : "",
+      })
+    );
+    dispatch(fetchUnreadCount());
+  }, [dispatch, page, unreadOnly]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => load(), 0);
+    const timer = window.setTimeout(() => {
+      setError("");
+      load();
+    }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
 
@@ -89,16 +82,12 @@ export default function NotificationsPage() {
     setBusyId(notification._id);
 
     try {
-      await markNotificationRead(notification._id);
-      setNotifications((previous) =>
-        previous.map((item) =>
-          item._id === notification._id ? { ...item, isRead: true } : item
-        )
-      );
-      setUnreadCount((count) => Math.max(count - 1, 0));
+      await dispatch(markNotificationReadThunk(notification._id)).unwrap();
     } catch (requestError) {
       setError(
-        getErrorMessage(requestError, "Unable to update this notification")
+        typeof requestError === "string"
+          ? requestError
+          : getErrorMessage(requestError, "Unable to update this notification")
       );
     } finally {
       setBusyId("");
@@ -110,19 +99,19 @@ export default function NotificationsPage() {
     setError("");
 
     try {
-      await markAllNotificationsRead();
-      setNotifications((previous) =>
-        previous.map((item) => ({ ...item, isRead: true }))
-      );
-      setUnreadCount(0);
+      await dispatch(markAllNotificationsReadThunk()).unwrap();
     } catch (requestError) {
       setError(
-        getErrorMessage(requestError, "Unable to mark all as read")
+        typeof requestError === "string"
+          ? requestError
+          : getErrorMessage(requestError, "Unable to mark all as read")
       );
     } finally {
       setMarkingAll(false);
     }
   };
+
+  const displayError = error || reduxError;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -162,10 +151,10 @@ export default function NotificationsPage() {
         ) : null}
       </PageHeader>
 
-      {error ? <Alert className="mb-4">{error}</Alert> : null}
+      {displayError ? <Alert className="mb-4">{displayError}</Alert> : null}
 
       <Card className="overflow-hidden">
-        {loading ? (
+        {loading && notifications.length === 0 ? (
           <SkeletonRows rows={6} />
         ) : notifications.length === 0 ? (
           <EmptyState

@@ -172,7 +172,7 @@ ticketSchema.pre("validate", async function assignTicketNumber() {
   const counter = await Counter.findOneAndUpdate(
     { _id: `ticket-${year}` },
     { $inc: { seq: 1 } },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
+    { returnDocument: "after", upsert: true, setDefaultsOnInsert: true }
   );
 
   this.ticketNumber = `TKT-${year}-${String(counter.seq).padStart(6, "0")}`;

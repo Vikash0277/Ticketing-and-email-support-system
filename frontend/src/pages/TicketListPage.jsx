@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import {
   Inbox,
   PlusCircle,
@@ -9,9 +9,9 @@ import {
   Ticket as TicketIcon,
 } from "lucide-react";
 
-import { listTickets } from "../api/tickets";
-import { listCategories } from "../api/resources";
-import { getErrorMessage } from "../api/client";
+import { fetchTickets } from "../redux/tickets/ticketsSlice";
+import { fetchCategoryOptions } from "../redux/categories/categoriesSlice";
+import { fetchAgents, fetchRequesters } from "../redux/users/usersSlice";
 import {
   Alert,
   Button,
@@ -60,16 +60,19 @@ const STAFF_VIEWS = [
 ];
 
 export default function TicketListPage() {
+  const dispatch = useDispatch();
   const user = useSelector((state) => state.auth.user);
   const role = user?.role ?? "customer";
   const isStaff = role === "agent" || role === "admin";
 
+  const { items: tickets, pagination, isLoading: loading, error } = useSelector(
+    (state) => state.tickets.list
+  );
+  const categories = useSelector((state) => state.categories.options);
+  const agents = useSelector((state) => state.users.agents);
+  const requesters = useSelector((state) => state.users.requesters);
+
   const [searchParams, setSearchParams] = useSearchParams();
-  const [tickets, setTickets] = useState([]);
-  const [pagination, setPagination] = useState(null);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [searchInput, setSearchInput] = useState(
     searchParams.get("search") ?? ""
   );
@@ -78,8 +81,13 @@ export default function TicketListPage() {
   const status = searchParams.get("status") ?? "";
   const priority = searchParams.get("priority") ?? "";
   const categoryId = searchParams.get("categoryId") ?? "";
+  const assignedTo = searchParams.get("assignedTo") ?? "";
+  const requesterId = searchParams.get("requesterId") ?? "";
+  const dateFrom = searchParams.get("dateFrom") ?? "";
+  const dateTo = searchParams.get("dateTo") ?? "";
   const sortBy = searchParams.get("sortBy") ?? "updated";
   const page = Number(searchParams.get("page") ?? 1);
+  const searchQuery = searchParams.toString();
 
   const updateParams = (changes) => {
     setSearchParams(
@@ -101,20 +109,20 @@ export default function TicketListPage() {
   };
 
   useEffect(() => {
-    let active = true;
+    dispatch(fetchCategoryOptions());
+  }, [dispatch]);
 
-    listCategories({ limit: 100 })
-      .then((result) => {
-        if (active) setCategories(result.items);
-      })
-      .catch(() => {
-        // Category filters are optional.
-      });
+  useEffect(() => {
+    if (isStaff) {
+      dispatch(fetchAgents());
+    }
+  }, [dispatch, isStaff]);
 
-    return () => {
-      active = false;
-    };
-  }, []);
+  useEffect(() => {
+    if (role === "admin") {
+      dispatch(fetchRequesters());
+    }
+  }, [dispatch, role]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -128,50 +136,29 @@ export default function TicketListPage() {
   }, [searchInput]);
 
   useEffect(() => {
-    let active = true;
-
-    async function load() {
-      setLoading(true);
-      setError("");
-
-      try {
-        const result = await listTickets({
-          view: isStaff ? view : "all",
-          status,
-          priority,
-          categoryId,
-          sortBy,
-          page,
-          limit: 15,
-          search: searchParams.get("search") ?? "",
-        });
-
-        if (active) {
-          setTickets(result.items);
-          setPagination(result.pagination);
-        }
-      } catch (requestError) {
-        if (active) {
-          setError(
-            getErrorMessage(requestError, "Unable to load tickets right now")
-          );
-        }
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    load();
-
-    return () => {
-      active = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams.toString(), isStaff, view, status, priority, categoryId, sortBy, page]);
+    dispatch(
+      fetchTickets({
+        view: isStaff ? view : "all",
+        status,
+        priority,
+        categoryId,
+        assignedTo,
+        requesterId,
+        dateFrom,
+        dateTo,
+        sortBy,
+        page,
+        limit: 15,
+        search: searchParams.get("search") ?? "",
+      })
+    );
+  }, [dispatch, searchQuery, isStaff, view, status, priority, categoryId, assignedTo, requesterId, dateFrom, dateTo, sortBy, page, searchParams]);
 
   const activeFilters = useMemo(
-    () => [status, priority, categoryId].filter(Boolean).length,
-    [status, priority, categoryId]
+    () =>
+      [status, priority, categoryId, assignedTo, requesterId, dateFrom, dateTo]
+        .filter(Boolean).length,
+    [status, priority, categoryId, assignedTo, requesterId, dateFrom, dateTo]
   );
 
   const newTicketPath = `/${role}/tickets/new`;
@@ -278,6 +265,71 @@ export default function TicketListPage() {
           </div>
 
           {isStaff ? (
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <select
+                value={assignedTo}
+                onChange={(event) =>
+                  updateParams({ assignedTo: event.target.value, page: "" })
+                }
+                className={inputClass}
+                aria-label="Filter by assigned agent"
+              >
+                <option value="">All agents</option>
+                {agents.map((agent) => (
+                  <option key={agent._id} value={agent._id}>
+                    {agent.name}
+                    {agent.role === "admin" ? " (Admin)" : ""}
+                  </option>
+                ))}
+              </select>
+
+              {role === "admin" ? (
+                <select
+                  value={requesterId}
+                  onChange={(event) =>
+                    updateParams({ requesterId: event.target.value, page: "" })
+                  }
+                  className={inputClass}
+                  aria-label="Filter by requester"
+                >
+                  <option value="">All requesters</option>
+                  {requesters.map((requester) => (
+                    <option key={requester._id} value={requester._id}>
+                      {requester.name} · {requester.email}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+
+              <div className="flex items-center gap-2 sm:col-span-2 lg:col-span-2">
+                <input
+                  type="date"
+                  value={dateFrom}
+                  max={dateTo || undefined}
+                  onChange={(event) =>
+                    updateParams({ dateFrom: event.target.value, page: "" })
+                  }
+                  className={inputClass}
+                  aria-label="Created from date"
+                  title="Created from"
+                />
+                <span className="text-xs text-slate-400">to</span>
+                <input
+                  type="date"
+                  value={dateTo}
+                  min={dateFrom || undefined}
+                  onChange={(event) =>
+                    updateParams({ dateTo: event.target.value, page: "" })
+                  }
+                  className={inputClass}
+                  aria-label="Created until date"
+                  title="Created until"
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {isStaff ? (
             <div className="flex flex-wrap items-center gap-2">
               {STAFF_VIEWS.map(([value, label]) => (
                 <button
@@ -303,6 +355,10 @@ export default function TicketListPage() {
                       status: "",
                       priority: "",
                       categoryId: "",
+                      assignedTo: "",
+                      requesterId: "",
+                      dateFrom: "",
+                      dateTo: "",
                       page: "",
                     })
                   }
@@ -360,6 +416,7 @@ export default function TicketListPage() {
                     <th className="px-4 py-3 font-semibold">Updated</th>
                   </tr>
                 </thead>
+
                 <tbody className="divide-y divide-slate-100">
                   {tickets.map((ticket) => (
                     <tr

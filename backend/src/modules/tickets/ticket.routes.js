@@ -236,8 +236,22 @@ router.post(
  *               assignedTo: { type: string, nullable: true }
  *     responses:
  *       200: { description: Ticket assigned }
+ *   post:
+ *     tags: [Tickets]
+ *     summary: Assign or reassign a ticket to an agent (POST alias)
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: Ticket assigned }
  */
 router.patch(
+  "/:id/assign",
+  validate(ticketIdParamsSchema, "params"),
+  validate(assignTicketSchema),
+  assignTicket
+);
+
+// The assignment lists assign as POST; keep both verbs for compatibility.
+router.post(
   "/:id/assign",
   validate(ticketIdParamsSchema, "params"),
   validate(assignTicketSchema),
