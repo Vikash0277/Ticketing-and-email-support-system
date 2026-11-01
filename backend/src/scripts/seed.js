@@ -6,6 +6,7 @@ import mongoose from "mongoose";
 import dbConnection from "../database/mongoDB.js";
 import User from "../modules/user/user.model.js";
 import Category from "../modules/categories/category.model.js";
+import DEFAULT_CATEGORIES from "../modules/categories/category.defaults.js";
 import Ticket from "../modules/tickets/ticket.model.js";
 import TicketMessage from "../modules/ticketMessage/ticketMessage.model.js";
 import TicketActivity from "../modules/ticketActivity/ticketActivity.model.js";
@@ -36,14 +37,6 @@ const ACCOUNTS = [
     role: "customer",
     jobTitle: null,
   },
-];
-
-const CATEGORIES = [
-  { name: "Billing", description: "Invoices, payments and refunds" },
-  { name: "Technical", description: "Bugs, outages and product errors" },
-  { name: "Account", description: "Login, profile and security issues" },
-  { name: "Feature Request", description: "Ideas and product improvements" },
-  { name: "General", description: "Anything else" },
 ];
 
 async function resetDatabase() {
@@ -92,7 +85,7 @@ async function seedUsers() {
 async function seedCategories(admin) {
   const categories = {};
 
-  for (const category of CATEGORIES) {
+  for (const category of DEFAULT_CATEGORIES) {
     const doc = await Category.findOneAndUpdate(
       { name: category.name },
       {
