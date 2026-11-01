@@ -10,9 +10,6 @@ const envSchema = z.object({
   FRONTEND_URL: z.string().default("http://localhost:5173"),
 
   MONGODB_URI: z.string().min(1, "MONGODB_URI is required"),
-  REDIS_URL: optionalString,
-  // Backwards-compatible alias used by the original project configuration.
-  REDIS_ADDRESS: optionalString,
 
   JWT_ACCESS_SECRET: z.string().min(8, "JWT_ACCESS_SECRET is required"),
   TOKEN_HASH_SECRET: z.string().min(8, "TOKEN_HASH_SECRET is required"),
@@ -46,9 +43,6 @@ if (!parsed.success) {
 
 const raw = parsed.data;
 
-// Support the legacy REDIS_ADDRESS variable without duplicating configuration.
-raw.REDIS_URL = raw.REDIS_URL || raw.REDIS_ADDRESS;
-
 export const env = {
   ...raw,
   isProduction: raw.NODE_ENV === "production",
@@ -68,9 +62,6 @@ export const env = {
         raw.CLOUDINARY_API_SECRET
     ),
     folder: raw.CLOUDINARY_FOLDER,
-  },
-  queue: {
-    enabled: Boolean(raw.REDIS_URL),
   },
 };
 

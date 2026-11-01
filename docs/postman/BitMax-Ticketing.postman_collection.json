@@ -961,7 +961,7 @@
               "raw": "{\n  \"ticketId\": \"{{ticketId}}\",\n  \"subject\": \"Update on your ticket\",\n  \"body\": \"We have reset your account and you should be able to sign in now.\"\n}"
             },
             "url": { "raw": "{{baseUrl}}/email/outbound", "host": ["{{baseUrl}}"], "path": ["email", "outbound"] },
-            "description": "Queues an email through BullMQ. Falls back to inline delivery when Redis is unavailable."
+            "description": "Sends an email through Resend from the API."
           }
         },
         {

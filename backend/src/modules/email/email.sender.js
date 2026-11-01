@@ -1,11 +1,10 @@
-import logger from "../config/logger.js";
-import EmailEvent from "../modules/email/emailEvent.model.js";
-import { sendProviderEmail } from "../modules/email/email.provider.js";
+import logger from "../../config/logger.js";
+import EmailEvent from "./emailEvent.model.js";
+import { sendProviderEmail } from "./email.provider.js";
 
 /**
- * Performs the actual provider send for a queued outbound email and keeps the
- * EmailEvent record in sync. Used both by the BullMQ worker and the inline
- * fallback when Redis is not available.
+ * Sends an outbound email through the provider and keeps its EmailEvent record
+ * in sync.
  */
 export async function sendEmailEvent({
   eventId,

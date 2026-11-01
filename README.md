@@ -43,7 +43,7 @@ A production-oriented MERN ticketing platform built for the BitMax Technology ME
 | Notifications | In-app notifications, unread count, mark one/all read |
 | Email outbound | Ticket confirmation, assignment/reassignment, agent reply, customer reply, status changes, reusable HTML templates |
 | Email inbound | Resend webhook with Svix signature verification, secure `reply+token@domain` threading, duplicate protection, sanitized HTML, reopen on customer reply, dev simulator |
-| Background jobs | BullMQ email queue with retries/backoff, separate worker process, inline fallback when Redis is unavailable |
+| Email delivery | Resend sends outbound email inline from the API; no Redis or separate worker required |
 | Files | Multer validation (max 5 files, 10 MB each), Cloudinary storage with local-disk fallback |
 | API quality | Consistent `{ success, message, data, pagination? }` responses, centralized errors, Zod validation, Swagger, Postman |
 | Ops | Health/readiness probes, structured request logs, graceful shutdown, Docker Compose |
@@ -53,7 +53,7 @@ A production-oriented MERN ticketing platform built for the BitMax Technology ME
 
 ## Tech stack
 
-**Backend:** Node.js 22, Express 5, MongoDB + Mongoose 9, Zod, JWT, bcryptjs, Helmet, express-rate-limit, Multer, Cloudinary, Resend, Svix, BullMQ + ioredis, Swagger UI, Vitest + Supertest + mongodb-memory-server.
+**Backend:** Node.js 22, Express 5, MongoDB + Mongoose 9, Zod, JWT, bcryptjs, Helmet, express-rate-limit, Multer, Cloudinary, Resend, Svix, Swagger UI, Vitest + Supertest + mongodb-memory-server.
 
 **Frontend:** React 19, Vite, React Router 7, Redux Toolkit (auth/session), Axios, Tailwind CSS 4, lucide-react.
 
@@ -69,8 +69,7 @@ React SPA (Vite)
 Express API  ──►  MongoDB (users, tickets, messages, activities,
    │              categories, notifications, sessions, email events)
    │
-   ├──► BullMQ queue ──► worker process ──► Resend API (outbound email)
-   │        (Redis; inline fallback when unavailable)
+   ├──► Resend API (outbound email, sent inline)
    │
    ├──► Cloudinary (attachments) or ./uploads (local fallback)
    │
@@ -85,7 +84,7 @@ Every backend module follows the same layering:
 routes → validation (Zod) → controller → service → model
                               │
                               ├── activity/notification side effects
-                              └── email dispatcher (queued)
+                              └── email dispatcher (inline)
 ```
 
 Key design points:
@@ -120,10 +119,8 @@ bitmax/
 │   │   │   ├── email/             # templates, provider, outbound, inbound, events
 │   │   │   ├── attachments/       # local attachment download
 │   │   │   └── health/
-│   │   ├── queues/                # BullMQ queue + dispatcher
 │   │   ├── services/              # storage abstraction
 │   │   ├── scripts/seed.js
-│   │   ├── workers/email.worker.js
 │   │   └── utils/
 │   ├── tests/                     # Vitest integration suite
 │   ├── vitest.config.js
@@ -151,7 +148,6 @@ bitmax/
 
 - Node.js 20+ (22 recommended)
 - MongoDB running locally (or a connection string)
-- Redis 5+ — optional, enables the BullMQ email queue
 - A Resend account — optional, enables real email delivery/receipt
 - A Cloudinary account — optional, otherwise attachments are stored on local disk
 
@@ -163,7 +159,7 @@ npm install
 cp .env.example .env      # Windows: copy .env.example .env
 # edit .env with your Mongo URI and secrets
 npm run seed -- --reset   # reset dev data and create sample accounts/tickets
-npm run dev               # API + email worker (nodemon)
+npm run dev               # API (nodemon); sends email inline through Resend
 ```
 
 The API starts on `http://localhost:3000`; Swagger is at `http://localhost:3000/api-docs`.
@@ -172,10 +168,9 @@ Useful scripts:
 
 | Script | Purpose |
 | --- | --- |
-| `npm run dev` | API + email worker with nodemon |
+| `npm run dev` | API with nodemon |
 | `npm run dev:api` | API only |
-| `npm run dev:worker` | email worker only |
-| `npm start` / `npm run start:worker` | production API / worker |
+| `npm start` | production API |
 | `npm run seed -- --reset` | wipe and reseed development data |
 | `npm run seed:categories` | safely add default categories without changing users or tickets |
 | `npm test` | run the Vitest integration suite |
@@ -235,7 +230,6 @@ Copy `backend/.env.example` to `backend/.env`. Never commit `.env`.
 | `API_BASE_URL` | no | Public API base used in Swagger and email links |
 | `FRONTEND_URL` | no | Frontend origin used for CORS and reset links |
 | `MONGODB_URI` | **yes** | MongoDB connection string |
-| `REDIS_URL` | no | Enables BullMQ (`REDIS_ADDRESS` is also accepted) |
 | `JWT_ACCESS_SECRET` | **yes** | Access-token signing secret |
 | `TOKEN_HASH_SECRET` | **yes** | Refresh-token/session hashing secret |
 | `ACCESS_TOKEN_TTL` | no | Access-token lifetime, default `15m` |
@@ -284,7 +278,7 @@ EMAIL_REPLY_DOMAIN=replies.yourdomain.com
 
 ### Outbound
 
-Sent automatically (queued when Redis is available):
+Sent automatically by the API through Resend:
 
 - Ticket created → confirmation to the requester
 - Ticket assigned/reassigned → notification to the agent
@@ -341,10 +335,10 @@ Content-Type: application/json
 
 It uses the same processor as the real webhook and is disabled in production.
 
-### Queue behavior
+### Delivery behavior
 
-- With `REDIS_URL`, mail is added to BullMQ and sent by `src/workers/email.worker.js` with retries and exponential backoff.
-- Without Redis (or if enqueueing fails), delivery happens inline in the API process.
+- Outbound ticket email is sent inline by the API through Resend; Redis and a separate worker are not required.
+- If Resend sending fails, the email event is marked failed and logged. Ticket creation/reply still succeeds, so inspect Email Events and retry the email after resolving the provider/configuration issue.
 - Email failures are logged and never roll back a ticket operation.
 
 ---
@@ -559,16 +553,13 @@ Services:
 | Service | URL / role |
 | --- | --- |
 | `backend` | `http://localhost:3000` (API + Swagger) |
-| `worker` | BullMQ email worker |
 | `frontend` | `http://localhost:8080` (nginx, proxies `/api/` and `/api-docs`) |
 | `mongo` | internal `mongo:27017`, persisted volume |
-| `redis` | internal `redis:6379`, persisted volume |
 
 Notes:
 
 - `docker-compose.yml` reads `backend/.env` for secrets.
 - The frontend is built with `VITE_API_URL=/api/v1` so nginx proxies API calls to the backend container.
-- Uploads are shared between backend and worker through the `uploads_data` volume.
 - Seed inside Docker if needed:
 
 ```bash
@@ -608,7 +599,6 @@ docker compose exec backend npm run seed -- --reset
 | Webhook returns 400/500 | Verify the raw body is not modified by a proxy; check logs with the provider event ID |
 | Attachments stored locally | Expected without Cloudinary credentials; local URLs require Bearer auth |
 | Frontend gets CORS errors | Add the frontend origin to `FRONTEND_URL` or use the documented dev ports |
-| Redis unavailable | The API falls back to inline email delivery; start Redis for queued delivery |
 | Tests fail to start MongoDB | Install MongoDB locally or let `mongodb-memory-server` download a binary |
 
 ---

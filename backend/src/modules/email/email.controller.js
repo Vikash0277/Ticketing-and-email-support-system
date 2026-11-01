@@ -13,7 +13,7 @@ import {
   hashReplyToken,
   makeReplyAddress,
 } from "./email-token.js";
-import { queueCustomTicketEmail } from "./email.outbound.email.js";
+import { sendCustomTicketEmail } from "./email.outbound.email.js";
 
 /**
  * POST /email/inbound
@@ -107,18 +107,19 @@ export const sendOutbound = asyncHandler(async (req, res) => {
 
   if (!ticket) throw ApiError.notFound("Ticket not found");
 
-  const event = await queueCustomTicketEmail(ticket, { subject, body });
+  const event = await sendCustomTicketEmail(ticket, { subject, body });
 
   if (!event) {
     return sendSuccess(res, 200, "Email threading is not configured; email was not sent", {
-      queued: false,
+      sent: false,
       configured: false,
     });
   }
 
-  return sendSuccess(res, 200, "Outbound email queued", {
-    queued: true,
+  return sendSuccess(res, 200, "Outbound email sent", {
+    sent: event.status === "sent",
     eventId: event._id,
+    status: event.status,
   });
 });
 

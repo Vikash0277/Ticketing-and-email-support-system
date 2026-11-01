@@ -10,15 +10,12 @@ services:
       NODE_ENV: production
       PORT: 3000
       MONGODB_URI: mongodb://mongo:27017/ticketingSystem
-      REDIS_URL: redis://redis:6379
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
       - uploads_data:/app/uploads
     depends_on:
       mongo:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     healthcheck:
       test:
@@ -30,30 +27,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    restart: unless-stopped
-
-  # BullMQ worker: sends queued ticket emails and keeps the API responsive.
-  worker:
-    build:
-      context: ./backend
-      dockerfile: dockerfile
-    command: ["npm", "run", "start:worker"]
-    env_file:
-      - path: ./backend/.env
-        format: raw
-    environment:
-      NODE_ENV: production
-      MONGODB_URI: mongodb://mongo:27017/ticketingSystem
-      REDIS_URL: redis://redis:6379
-    volumes:
-      - uploads_data:/app/uploads
-    depends_on:
-      mongo:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      backend:
-        condition: service_healthy
     restart: unless-stopped
 
   frontend:
@@ -88,21 +61,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
-    ports:
-      - "127.0.0.1:6379:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
 volumes:
   mongodb_data:
-  redis_data:
   uploads_data:
