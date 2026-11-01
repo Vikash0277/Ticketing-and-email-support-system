@@ -290,7 +290,7 @@ Sent automatically by the API through Resend:
 Each email contains the ticket number and subject. Outbound `Reply-To` uses:
 
 ```text
-reply-<64-char-hmac-token>@viegoxo.resend.app
+reply-<58-char-hmac-token>@viegoxo.resend.app
 ```
 
 The token is derived from the ticket ID and an HMAC secret; only its SHA-256 hash is stored on the ticket.

@@ -1,6 +1,11 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
-import { extractReplyToken } from "../src/modules/email/email-token.js";
+import {
+  createReplyToken,
+  extractReplyToken,
+  makeReplyAddress,
+} from "../src/modules/email/email-token.js";
+import env from "../src/config/env.js";
 
 let app;
 
@@ -509,11 +514,30 @@ describe("Dashboard", () => {
 });
 
 describe("Email threading", () => {
+  it("keeps generated reply addresses within the email local-part limit", () => {
+    const token = createReplyToken("ticket-id");
+    const previousDomain = env.email.replyDomain;
+    env.email.replyDomain = "viegoxo.resend.app";
+
+    try {
+      const address = makeReplyAddress(token);
+
+      expect(token).toHaveLength(58);
+      expect(address).toMatch(/^reply-[a-f0-9]{58}@/);
+      expect(address.split("@")[0]).toHaveLength(64);
+    } finally {
+      env.email.replyDomain = previousDomain;
+    }
+  });
+
   it("extracts reply tokens from provider-compatible addresses", () => {
-    const token = "a".repeat(64);
+    const token = "a".repeat(58);
+    const legacyToken = "b".repeat(64);
 
     expect(extractReplyToken([`reply-${token}@viegoxo.resend.app`])).toBe(token);
-    expect(extractReplyToken([`reply+${token}@viegoxo.resend.app`])).toBe(token);
+    expect(extractReplyToken([`reply+${legacyToken}@viegoxo.resend.app`])).toBe(
+      legacyToken
+    );
   });
 
   it("processes a simulated inbound reply", async () => {

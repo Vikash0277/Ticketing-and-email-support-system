@@ -14,7 +14,8 @@ export function createReplyToken(ticketId) {
   return crypto
     .createHmac("sha256", getSecret())
     .update(String(ticketId))
-    .digest("hex");
+    .digest("hex")
+    .slice(0, 58);
 }
 
 export function hashReplyToken(token) {
@@ -42,7 +43,7 @@ export function extractReplyToken(recipients = []) {
     const value = String(recipient || "");
     const match = value.match(/<([^>]+)>/);
     const email = (match?.[1] ?? value).trim().toLowerCase();
-    const tokenMatch = email.match(/^reply[+-]([a-f0-9]{64})@/i);
+    const tokenMatch = email.match(/^reply[+-]([a-f0-9]{58}|[a-f0-9]{64})@/i);
 
     if (tokenMatch) return tokenMatch[1];
   }
