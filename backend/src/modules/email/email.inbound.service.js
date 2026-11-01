@@ -65,8 +65,14 @@ function sanitizeIncomingBody({ text, html }) {
   }).trim();
 }
 
-function normalizeAttachments(attachments = []) {
-  return attachments
+export function normalizeAttachments(attachments = []) {
+  const items = Array.isArray(attachments)
+    ? attachments
+    : Array.isArray(attachments?.data)
+      ? attachments.data
+      : [];
+
+  return items
     .filter((attachment) => attachment?.filename)
     .map((attachment) => ({
       filename: attachment.filename,
@@ -108,9 +114,23 @@ export async function processInboundEmailPayload(payload) {
     });
   } catch (error) {
     if (error.code === 11000) {
-      return { duplicate: true };
+      event = await EmailEvent.findOne({ providerEventId });
+
+      if (!event) {
+        throw error;
+      }
+
+      if (event.status !== "failed") {
+        return { duplicate: true };
+      }
+
+      event.status = "processing";
+      event.attempts += 1;
+      event.error = undefined;
+      await event.save();
+    } else {
+      throw error;
     }
-    throw error;
   }
 
   try {

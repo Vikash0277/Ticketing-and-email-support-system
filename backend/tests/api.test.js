@@ -3,9 +3,13 @@ import request from "supertest";
 import {
   createReplyToken,
   extractReplyToken,
+  hashReplyToken,
   makeReplyAddress,
 } from "../src/modules/email/email-token.js";
 import env from "../src/config/env.js";
+import EmailEvent from "../src/modules/email/emailEvent.model.js";
+import { normalizeAttachments, processInboundEmailPayload } from "../src/modules/email/email.inbound.service.js";
+import Ticket from "../src/modules/tickets/ticket.model.js";
 
 let app;
 
@@ -538,6 +542,53 @@ describe("Email threading", () => {
     expect(extractReplyToken([`reply+${legacyToken}@viegoxo.resend.app`])).toBe(
       legacyToken
     );
+  });
+
+  it("normalizes Resend attachment list responses", () => {
+    expect(
+      normalizeAttachments({
+        object: "list",
+        data: [{ filename: "screenshot.png", content_type: "image/png", size: 12 }],
+      })
+    ).toEqual([
+      expect.objectContaining({
+        filename: "screenshot.png",
+        contentType: "image/png",
+        size: 12,
+      }),
+    ]);
+  });
+
+  it("reprocesses a failed inbound webhook retry", async () => {
+    const ticket = await Ticket.findById(ticketId).select("+emailReplyTokenHash");
+    const token = createReplyToken(ticketId);
+    ticket.emailReplyTokenHash = hashReplyToken(token);
+    await ticket.save();
+
+    const providerEventId = `retry-test:${Date.now()}`;
+    await EmailEvent.create({
+      providerEventId,
+      ticketId,
+      direction: "inbound",
+      status: "failed",
+      error: "Previous processing attempt failed",
+      attempts: 1,
+    });
+
+    const result = await processInboundEmailPayload({
+      providerEventId,
+      messageId: `<${providerEventId}@bitmax.test>`,
+      from: "customer@bitmax.test",
+      to: [`reply-${token}@viegoxo.resend.app`],
+      subject: "Re: Cannot sign in",
+      text: "The issue is still happening.",
+      attachments: { object: "list", data: [] },
+    });
+
+    expect(result.processed).toBe(true);
+    const event = await EmailEvent.findOne({ providerEventId });
+    expect(event.status).toBe("processed");
+    expect(event.attempts).toBe(2);
   });
 
   it("processes a simulated inbound reply", async () => {

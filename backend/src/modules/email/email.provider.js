@@ -82,5 +82,19 @@ export async function listReceivedAttachments(emailId) {
     throw new Error(`Resend attachment lookup failed: ${error.message}`);
   }
 
-  return data ?? [];
+  if (Array.isArray(data)) {
+    return data;
+  }
+
+  if (Array.isArray(data?.data)) {
+    return data.data;
+  }
+
+  if (data != null) {
+    logger.warn("Unexpected Resend attachment list response", {
+      emailId,
+    });
+  }
+
+  return [];
 }
