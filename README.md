@@ -42,7 +42,7 @@ A production-oriented MERN ticketing platform built for the BitMax Technology ME
 | Dashboard | Role-aware totals, status/priority breakdowns, 14-day trend, recent tickets, admin user totals |
 | Notifications | In-app notifications, unread count, mark one/all read |
 | Email outbound | Ticket confirmation, assignment/reassignment, agent reply, customer reply, status changes, reusable HTML templates |
-| Email inbound | Resend webhook with Svix signature verification, secure `reply+token@domain` threading, duplicate protection, sanitized HTML, reopen on customer reply, dev simulator |
+| Email inbound | Resend webhook with Svix signature verification, secure `reply-token@domain` threading, duplicate protection, sanitized HTML, reopen on customer reply, dev simulator |
 | Email delivery | Resend sends outbound email inline from the API; no Redis or separate worker required |
 | Files | Multer validation (max 5 files, 10 MB each), Cloudinary storage with local-disk fallback |
 | API quality | Consistent `{ success, message, data, pagination? }` responses, centralized errors, Zod validation, Swagger, Postman |
@@ -75,7 +75,7 @@ Express API  ──►  MongoDB (users, tickets, messages, activities,
    │
    └──► POST /api/v1/email/inbound  ◄── Resend webhook (Svix-signed)
             │
-            └── reply+<HMAC token>@replies.domain  →  ticket message
+            └── reply-<HMAC token>@replies.domain  →  ticket message
 ```
 
 Every backend module follows the same layering:
@@ -89,7 +89,7 @@ routes → validation (Zod) → controller → service → model
 
 Key design points:
 
-- **Reply threading never depends on the subject.** Each ticket stores an HMAC reply token hash; outbound mail uses `Reply-To: reply+<token>@EMAIL_REPLY_DOMAIN`. Inbound mail is resolved by the recipient token, and the sender must match the ticket requester (or an authorized participant).
+- **Reply threading never depends on the subject.** Each ticket stores an HMAC reply token hash; outbound mail uses `Reply-To: reply-<token>@EMAIL_REPLY_DOMAIN`. Inbound mail is resolved by the recipient token, and the sender must match the ticket requester (or an authorized participant).
 - **Email failures never block ticket operations.** Notifications are best-effort and logged.
 - **Email processing is idempotent.** Provider event IDs and email Message-IDs are unique-indexed in `EmailEvent`; duplicates are acknowledged without creating another message.
 - **Inbound HTML is sanitized** before it is stored or rendered.
@@ -236,7 +236,7 @@ Copy `backend/.env.example` to `backend/.env`. Never commit `.env`.
 | `REFRESH_TOKEN_TTL_DAYS` | no | Refresh-token lifetime, default `7` |
 | `RESEND_API_KEY` | no | Enables outbound email |
 | `EMAIL_FROM` | no | Sender, e.g. `"BitMax Support" <support@yourdomain.com>` |
-| `EMAIL_REPLY_DOMAIN` | no | Receiving domain configured in Resend |
+| `EMAIL_REPLY_DOMAIN` | no | Receiving domain configured in Resend, e.g. `viegoxo.resend.app` |
 | `EMAIL_REPLY_TOKEN_SECRET` | no | HMAC secret for reply addresses (falls back to `TOKEN_HASH_SECRET`) |
 | `RESEND_WEBHOOK_SECRET` | no | Svix signing secret for the inbound webhook |
 | `CLOUDINARY_CLOUD_NAME` | no | Enables Cloudinary when all three are set |
@@ -273,7 +273,7 @@ Email threading activates only when **all** of these are set:
 ```env
 RESEND_API_KEY=re_...
 EMAIL_FROM="BitMax Support" <support@yourdomain.com>
-EMAIL_REPLY_DOMAIN=replies.yourdomain.com
+EMAIL_REPLY_DOMAIN=viegoxo.resend.app
 ```
 
 ### Outbound
@@ -290,7 +290,7 @@ Sent automatically by the API through Resend:
 Each email contains the ticket number and subject. Outbound `Reply-To` uses:
 
 ```text
-reply+<64-char-hmac-token>@replies.yourdomain.com
+reply-<64-char-hmac-token>@viegoxo.resend.app
 ```
 
 The token is derived from the ticket ID and an HMAC secret; only its SHA-256 hash is stored on the ticket.
@@ -298,7 +298,7 @@ The token is derived from the ticket ID and an HMAC secret; only its SHA-256 has
 ### Inbound (Resend)
 
 1. Add and verify your domain in Resend.
-2. Configure the domain's **MX record** to point at Resend's inbound servers and set `EMAIL_REPLY_DOMAIN`.
+2. Configure the domain's **MX record** to point at Resend's inbound servers and set `EMAIL_REPLY_DOMAIN` (for the Resend-provided domain, use `viegoxo.resend.app`).
 3. Create a webhook for the `email.received` event:
    - URL: `https://your-api-host/api/v1/email/inbound`
    - Copy the Svix signing secret into `RESEND_WEBHOOK_SECRET`.
@@ -308,7 +308,7 @@ Inbound flow:
 
 1. Svix signature, timestamp and event ID are verified.
 2. The `email.received` payload is fetched from Resend.
-3. The recipient `reply+token@domain` is matched against `Ticket.emailReplyTokenHash`.
+3. The recipient `reply-token@domain` is matched against `Ticket.emailReplyTokenHash`.
 4. The sender must be the ticket requester (or an authorized participant).
 5. Quoted history is trimmed where possible, HTML is sanitized, and a `TicketMessage` with `source: "email"` is stored.
 6. If the ticket is `resolved`/`closed`, the customer reply reopens it.
