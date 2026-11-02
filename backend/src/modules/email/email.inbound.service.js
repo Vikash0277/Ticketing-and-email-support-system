@@ -35,18 +35,43 @@ function headerValue(headers, name) {
   return key ? headers[key] : undefined;
 }
 
-function cleanPlainText(text = "") {
+export function cleanPlainText(text = "") {
   const quoteMarkers = [
-    /^On .+wrote:$/im,
     /^From:\s.+$/im,
     /^-{2,}\s*Original Message\s*-{2,}$/im,
   ];
 
   let result = String(text);
+  const lines = result.split(/\r?\n/);
+  const lineEndingLength = result.includes("\r\n") ? 2 : 1;
+  let gmailQuoteStart = -1;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!/^\s*On\b/i.test(lines[index])) continue;
+
+    const headerLines = lines.slice(index, index + 4);
+    if (headerLines.some((line) => /^\s*wrote:\s*$/i.test(line))) {
+      gmailQuoteStart = lines
+        .slice(0, index)
+        .reduce((length, line) => length + line.length + lineEndingLength, 0);
+      break;
+    }
+
+    if (/\bwrote:\s*$/i.test(lines[index])) {
+      gmailQuoteStart = lines
+        .slice(0, index)
+        .reduce((length, line) => length + line.length + lineEndingLength, 0);
+      break;
+    }
+  }
+
+  if (gmailQuoteStart > 0) {
+    result = result.slice(0, gmailQuoteStart);
+  }
 
   for (const marker of quoteMarkers) {
     const index = result.search(marker);
-    if (index > 0) {
+    if (index > 0 && (gmailQuoteStart < 0 || index < gmailQuoteStart)) {
       result = result.slice(0, index);
     }
   }

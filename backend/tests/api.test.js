@@ -8,7 +8,11 @@ import {
 } from "../src/modules/email/email-token.js";
 import env from "../src/config/env.js";
 import EmailEvent from "../src/modules/email/emailEvent.model.js";
-import { normalizeAttachments, processInboundEmailPayload } from "../src/modules/email/email.inbound.service.js";
+import {
+  cleanPlainText,
+  normalizeAttachments,
+  processInboundEmailPayload,
+} from "../src/modules/email/email.inbound.service.js";
 import Ticket from "../src/modules/tickets/ticket.model.js";
 
 let app;
@@ -557,6 +561,24 @@ describe("Email threading", () => {
         size: 12,
       }),
     ]);
+  });
+
+  it("removes Gmail's wrapped quoted thread from inbound replies", () => {
+    const body = [
+      "Thanks",
+      "",
+      "On Sun, Nov 1, 2026, 10:52 PM Vikash Prasad <prasadvikash308@gmail.com>",
+      "wrote:",
+      "",
+      "> Thanks you so much",
+      ">",
+      "> On Sun, Nov 1, 2026, 10:48 PM Vikash Prasad <prasadvikash308@gmail.com>",
+      "> wrote:",
+      ">",
+      ">> Thanks for helping me",
+    ].join("\n");
+
+    expect(cleanPlainText(body)).toBe("Thanks");
   });
 
   it("reprocesses a failed inbound webhook retry", async () => {
